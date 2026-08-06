@@ -40,6 +40,7 @@ private:
     veloria::dsp::StochasticOscillator oscillator;
     juce::dsp::Gain<float> outputGain;
     float currentFrequency { 220.0f };
+    std::uint32_t currentSeed { 1u };
     bool noteActive { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessor)
