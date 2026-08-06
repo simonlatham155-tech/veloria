@@ -21,7 +21,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return 3.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -38,10 +38,12 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     veloria::dsp::StochasticOscillator oscillator;
+    juce::ADSR amplitudeEnvelope;
+    juce::ADSR::Parameters envelopeParameters;
     juce::dsp::Gain<float> outputGain;
     float currentFrequency { 220.0f };
     std::uint32_t currentSeed { 1u };
-    bool noteActive { false };
+    int currentMidiNote { -1 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessor)
 };
