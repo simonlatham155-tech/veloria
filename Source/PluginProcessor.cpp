@@ -10,18 +10,26 @@ VeloriaAudioProcessor::VeloriaAudioProcessor()
 juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> layout;
-    layout.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "instability", "Instability", juce::NormalisableRange<float>(0.0f, 1.0f), 0.35f));
+    for (const auto& item : std::array<std::pair<const char*, float>, 4> {{
+             { "stability", 0.85f }, { "life", 0.35f }, { "focus", 0.55f }, { "bloom", 0.45f } }})
+        layout.push_back(std::make_unique<juce::AudioParameterFloat>(item.first, item.first,
+            juce::NormalisableRange<float>(0.0f, 1.0f), item.second));
+
     layout.push_back(std::make_unique<juce::AudioParameterFloat>(
         "level", "Level", juce::NormalisableRange<float>(-48.0f, 0.0f), -12.0f));
-    layout.push_back(std::make_unique<juce::AudioParameterInt>(
-        "seed", "Seed", 1, 999999, 1));
+    layout.push_back(std::make_unique<juce::AudioParameterInt>("seed", "Seed", 1, 999999, 1));
     return { layout.begin(), layout.end() };
 }
 
 void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     oscillator.prepare(sampleRate);
+    amplitudeEnvelope.setSampleRate(sampleRate);
+    envelopeParameters.attack = 0.35f;
+    envelopeParameters.decay = 1.2f;
+    envelopeParameters.sustain = 0.78f;
+    envelopeParameters.release = 2.5f;
+    amplitudeEnvelope.setParameters(envelopeParameters);
     outputGain.prepare({ sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
 }
 
@@ -43,27 +51,35 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         const auto message = metadata.getMessage();
         if (message.isNoteOn())
         {
-            currentFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(message.getNoteNumber()));
-            noteActive = true;
+            currentMidiNote = message.getNoteNumber();
+            currentFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(currentMidiNote));
+            amplitudeEnvelope.noteOn();
         }
-        else if (message.isNoteOff())
+        else if (message.isNoteOff() && message.getNoteNumber() == currentMidiNote)
         {
-            noteActive = false;
+            amplitudeEnvelope.noteOff();
+            currentMidiNote = -1;
         }
     }
 
     oscillator.setFrequency(currentFrequency);
-    oscillator.setInstability(parameters.getRawParameterValue("instability")->load());
-    oscillator.setSeed(static_cast<std::uint32_t>(parameters.getRawParameterValue("seed")->load()));
+    oscillator.setStability(parameters.getRawParameterValue("stability")->load());
+    oscillator.setLife(parameters.getRawParameterValue("life")->load());
+    oscillator.setFocus(parameters.getRawParameterValue("focus")->load());
+    oscillator.setBloom(parameters.getRawParameterValue("bloom")->load());
 
-    if (noteActive)
+    const auto requestedSeed = static_cast<std::uint32_t>(parameters.getRawParameterValue("seed")->load());
+    if (requestedSeed != currentSeed)
     {
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-        {
-            const auto value = oscillator.processSample() * 0.2f;
-            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-                buffer.setSample(channel, sample, value);
-        }
+        currentSeed = requestedSeed;
+        oscillator.setSeed(currentSeed);
+    }
+
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    {
+        const auto value = oscillator.processSample() * amplitudeEnvelope.getNextSample() * 0.35f;
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            buffer.setSample(channel, sample, value);
     }
 
     outputGain.setGainDecibels(parameters.getRawParameterValue("level")->load());
@@ -71,10 +87,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     outputGain.process(juce::dsp::ProcessContextReplacing<float>(block));
 }
 
-juce::AudioProcessorEditor* VeloriaAudioProcessor::createEditor()
-{
-    return new VeloriaAudioProcessorEditor(*this);
-}
+juce::AudioProcessorEditor* VeloriaAudioProcessor::createEditor() { return new VeloriaAudioProcessorEditor(*this); }
 
 void VeloriaAudioProcessor::getStateInformation(juce::MemoryBlock& destination)
 {
@@ -88,7 +101,4 @@ void VeloriaAudioProcessor::setStateInformation(const void* data, int size)
         parameters.replaceState(juce::ValueTree::fromXml(*xml));
 }
 
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new VeloriaAudioProcessor();
-}
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new VeloriaAudioProcessor(); }
