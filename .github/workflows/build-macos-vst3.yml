@@ -1,0 +1,39 @@
+name: Build macOS VST3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/vst3-test-build
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target Veloria_VST3 --parallel 3
+
+      - name: Package VST3
+        run: |
+          test -d "build/Veloria_artefacts/Release/VST3/Veloria.vst3"
+          mkdir -p artifact
+          ditto -c -k --sequesterRsrc --keepParent \
+            "build/Veloria_artefacts/Release/VST3/Veloria.vst3" \
+            "artifact/Veloria-macOS-VST3.zip"
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Veloria-macOS-VST3
+          path: artifact/Veloria-macOS-VST3.zip
+          if-no-files-found: error
