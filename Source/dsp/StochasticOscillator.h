@@ -1,7 +1,6 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include <array>
 #include <cstdint>
 
 namespace veloria::dsp
@@ -36,7 +35,14 @@ public:
 
     void setSeed(std::uint32_t newSeed) noexcept
     {
-        seed = newSeed == 0 ? 1u : newSeed;
+        const auto normalisedSeed = newSeed == 0 ? 1u : newSeed;
+
+        // processBlock calls this every buffer. Only restart the stochastic
+        // sequence when the user actually changes the seed.
+        if (normalisedSeed == seed)
+            return;
+
+        seed = normalisedSeed;
         random.setSeed(static_cast<juce::int64>(seed));
         reset();
     }
