@@ -16,22 +16,30 @@ public:
 private:
     void timerCallback() override;
     void drawStochasticGlobe(juce::Graphics&, juce::Rectangle<float> bounds);
+    void drawEvolutionGraph(juce::Graphics&, juce::Rectangle<float> bounds);
+    void drawPanel(juce::Graphics&, juce::Rectangle<float> bounds, const juce::String& title);
     void drawKnobLabel(juce::Graphics&, juce::Slider&, const juce::String& text);
+    void configureKnob(juce::Slider&);
 
     VeloriaAudioProcessor& audioProcessor;
     VeloriaAudioProcessor::VisualState visualState;
 
-    juce::Slider ampWalk, timeWalk, ampMirror, timeMirror, level;
+    juce::Slider ampWalk, timeWalk, ampMirror, timeMirror;
+    juce::Slider attack, decay, sustain, release;
+    juce::Slider seed, level;
+
     juce::ComboBox presetBox;
     juce::ToggleButton monoButton { "MONO" };
     juce::TextButton discoverButton { "DISCOVER" };
-    juce::Label title, subtitle, midiHint, voiceStatus;
+    juce::Label title, brand, subtitle, fieldStatus, voiceStatus, footerStatus;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     std::unique_ptr<SliderAttachment> ampWalkAttachment, timeWalkAttachment,
-        ampMirrorAttachment, timeMirrorAttachment, levelAttachment;
+        ampMirrorAttachment, timeMirrorAttachment;
+    std::unique_ptr<SliderAttachment> attackAttachment, decayAttachment,
+        sustainAttachment, releaseAttachment, seedAttachment, levelAttachment;
     std::unique_ptr<ButtonAttachment> monoAttachment;
 
     float rotationPhase { 0.0f };
