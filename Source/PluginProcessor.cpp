@@ -19,6 +19,8 @@ VeloriaAudioProcessor::VeloriaAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    for (auto& value : visualDurations)
+        value.store(1.0f);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::createParameterLayout()
@@ -49,6 +51,7 @@ void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     }
     outputGain.prepare({ sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
     updateVoiceParameters();
+    publishVisualState(0.0f);
 }
 
 void VeloriaAudioProcessor::releaseResources() {}
@@ -74,6 +77,8 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     }
 
     const auto voiceGain = 0.52f / std::sqrt(static_cast<float>(maxVoices));
+    double energyAccumulator = 0.0;
+
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float mixed = 0.0f;
@@ -84,6 +89,8 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             mixed += voice.oscillator.processSample() * env * voiceGain;
             if (! voice.envelope.isActive()) { voice.active = false; voice.midiNote = -1; }
         }
+
+        energyAccumulator += static_cast<double>(mixed) * static_cast<double>(mixed);
         for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
             buffer.setSample(channel, sample, mixed);
     }
@@ -91,6 +98,11 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     outputGain.setGainDecibels(parameters.getRawParameterValue("level")->load());
     juce::dsp::AudioBlock<float> block(buffer);
     outputGain.process(juce::dsp::ProcessContextReplacing<float>(block));
+
+    const auto rms = buffer.getNumSamples() > 0
+        ? static_cast<float>(std::sqrt(energyAccumulator / static_cast<double>(buffer.getNumSamples())))
+        : 0.0f;
+    publishVisualState(juce::jlimit(0.0f, 1.0f, rms * 5.0f));
 }
 
 void VeloriaAudioProcessor::startNote(int midiNote, float)
@@ -159,6 +171,46 @@ void VeloriaAudioProcessor::updateVoiceParameters()
     }
 }
 
+void VeloriaAudioProcessor::publishVisualState(float energy) noexcept
+{
+    const Voice* visualVoice = &voices.front();
+    int activeCount = 0;
+    for (const auto& voice : voices)
+    {
+        if (voice.active)
+        {
+            ++activeCount;
+            if (visualVoice == &voices.front() && ! voices.front().active)
+                visualVoice = &voice;
+        }
+    }
+
+    std::array<float, visualBreakpointCount> amplitudes {};
+    std::array<float, visualBreakpointCount> durations {};
+    visualVoice->oscillator.copyState(amplitudes, durations);
+
+    for (std::size_t i = 0; i < visualBreakpointCount; ++i)
+    {
+        visualAmplitudes[i].store(amplitudes[i], std::memory_order_relaxed);
+        visualDurations[i].store(durations[i], std::memory_order_relaxed);
+    }
+    visualActiveVoices.store(activeCount, std::memory_order_relaxed);
+    visualEnergy.store(energy, std::memory_order_relaxed);
+}
+
+VeloriaAudioProcessor::VisualState VeloriaAudioProcessor::getVisualState() const noexcept
+{
+    VisualState state;
+    for (std::size_t i = 0; i < visualBreakpointCount; ++i)
+    {
+        state.amplitudes[i] = visualAmplitudes[i].load(std::memory_order_relaxed);
+        state.durations[i] = visualDurations[i].load(std::memory_order_relaxed);
+    }
+    state.activeVoices = visualActiveVoices.load(std::memory_order_relaxed);
+    state.energy = visualEnergy.load(std::memory_order_relaxed);
+    return state;
+}
+
 int VeloriaAudioProcessor::getNumPrograms() { return static_cast<int>(factoryPresets.size()); }
 
 const juce::String VeloriaAudioProcessor::getProgramName(int index)
@@ -183,25 +235,25 @@ void VeloriaAudioProcessor::setCurrentProgram(int index)
 void VeloriaAudioProcessor::applyFactoryPreset(int index)
 {
     const auto& p = factoryPresets[static_cast<std::size_t>(index)];
-    setParameter("ampWalk", p.ampWalk); setParameter("timeWalk", p.timeWalk);
-    setParameter("ampMirror", p.ampMirror); setParameter("timeMirror", p.timeMirror);
-    setParameter("attack", p.attack); setParameter("decay", p.decay);
-    setParameter("sustain", p.sustain); setParameter("release", p.release);
-    setParameter("seed", static_cast<float>(p.seed));
+    setParameterValue("ampWalk", p.ampWalk); setParameterValue("timeWalk", p.timeWalk);
+    setParameterValue("ampMirror", p.ampMirror); setParameterValue("timeMirror", p.timeMirror);
+    setParameterValue("attack", p.attack); setParameterValue("decay", p.decay);
+    setParameterValue("sustain", p.sustain); setParameterValue("release", p.release);
+    setParameterValue("seed", static_cast<float>(p.seed));
 }
 
 void VeloriaAudioProcessor::discover()
 {
     currentProgram = -1;
-    setParameter("ampWalk", 0.01f + discoveryRandom.nextFloat() * 0.60f);
-    setParameter("timeWalk", 0.005f + discoveryRandom.nextFloat() * 0.48f);
-    setParameter("ampMirror", 0.25f + discoveryRandom.nextFloat() * 0.75f);
-    setParameter("timeMirror", 0.08f + discoveryRandom.nextFloat() * 0.82f);
-    setParameter("seed", static_cast<float>(1 + discoveryRandom.nextInt(999998)));
+    setParameterValue("ampWalk", 0.01f + discoveryRandom.nextFloat() * 0.60f);
+    setParameterValue("timeWalk", 0.005f + discoveryRandom.nextFloat() * 0.48f);
+    setParameterValue("ampMirror", 0.25f + discoveryRandom.nextFloat() * 0.75f);
+    setParameterValue("timeMirror", 0.08f + discoveryRandom.nextFloat() * 0.82f);
+    setParameterValue("seed", static_cast<float>(1 + discoveryRandom.nextInt(999998)));
     stopAllVoices(false);
 }
 
-void VeloriaAudioProcessor::setParameter(const juce::String& id, float value)
+void VeloriaAudioProcessor::setParameterValue(const juce::String& id, float value)
 {
     if (auto* parameter = parameters.getParameter(id))
     {
