@@ -14,12 +14,12 @@ public:
 
 private:
     VeloriaAudioProcessor& processor;
-    juce::Slider stability, life, focus, bloom, level;
+    juce::Slider ampWalk, timeWalk, correlation, curve, level;
     juce::Label title, subtitle;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
-    std::unique_ptr<SliderAttachment> stabilityAttachment, lifeAttachment, focusAttachment,
-        bloomAttachment, levelAttachment;
+    std::unique_ptr<SliderAttachment> ampWalkAttachment, timeWalkAttachment,
+        correlationAttachment, curveAttachment, levelAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessorEditor)
 };
