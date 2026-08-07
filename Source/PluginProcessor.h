@@ -49,6 +49,12 @@ public:
     juce::StringArray getFactoryPresetNames() const;
     VisualState getVisualState() const noexcept;
 
+    // Native MIDI learn. The UI selects a parameter; the next incoming MIDI CC
+    // becomes its controller. Mappings are stored with the plugin state.
+    void beginMidiLearn(const juce::String& parameterId) noexcept;
+    void clearMidiMapping(const juce::String& parameterId) noexcept;
+    int getMidiCCForParameter(const juce::String& parameterId) const noexcept;
+
     juce::AudioProcessorValueTreeState parameters;
 
 private:
@@ -78,7 +84,9 @@ private:
     };
 
     static constexpr int maxVoices = 8;
+    static constexpr int midiLearnParameterCount = 11;
     static const std::array<FactoryPreset, 10> factoryPresets;
+    static const std::array<const char*, midiLearnParameterCount> midiLearnParameterIds;
 
     void startNote(int midiNote, float velocity);
     void stopNote(int midiNote);
@@ -87,6 +95,9 @@ private:
     void updateVoiceParameters();
     void applyFactoryPreset(int index);
     void setParameterValue(const juce::String& id, float value);
+    void setParameterFromMidi(int parameterIndex, float normalisedValue) noexcept;
+    int findMidiParameterIndex(const juce::String& id) const noexcept;
+    void handleMidiController(const juce::MidiMessage& message) noexcept;
     void publishVisualState(float energy) noexcept;
 
     std::array<Voice, maxVoices> voices;
@@ -99,6 +110,9 @@ private:
     std::array<std::atomic<float>, visualBreakpointCount> visualDurations {};
     std::atomic<int> visualActiveVoices { 0 };
     std::atomic<float> visualEnergy { 0.0f };
+
+    std::array<std::atomic<int>, midiLearnParameterCount> midiCCMappings {};
+    std::atomic<int> midiLearnTarget { -1 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessor)
 };
