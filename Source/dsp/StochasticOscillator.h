@@ -21,6 +21,8 @@ namespace veloria::dsp
 class StochasticOscillator
 {
 public:
+    static constexpr std::size_t numBreakpoints = 12;
+
     void prepare(double newSampleRate)
     {
         sampleRate = juce::jmax(1.0, newSampleRate);
@@ -52,9 +54,16 @@ public:
         reset();
     }
 
+    void copyState(std::array<float, numBreakpoints>& amplitudeOut,
+                   std::array<float, numBreakpoints>& durationOut) const noexcept
+    {
+        amplitudeOut = amplitudes;
+        durationOut = durations;
+    }
+
     [[nodiscard]] float processSample() noexcept
     {
-        const auto nextIndex = (segmentIndex + 1) % breakpointCount;
+        const auto nextIndex = (segmentIndex + 1) % numBreakpoints;
         const auto t = static_cast<float>(segmentPhase);
 
         // GENDYN is breakpoint-interpolation synthesis. Keep interpolation linear:
@@ -83,13 +92,11 @@ public:
 private:
     void initialiseState() noexcept
     {
-        // A low-complexity starting polygon. Its identity rapidly becomes the
-        // result of the stochastic process rather than the initial waveform.
-        for (std::size_t i = 0; i < breakpointCount; ++i)
+        for (std::size_t i = 0; i < numBreakpoints; ++i)
         {
             const auto angle = juce::MathConstants<float>::twoPi
                              * static_cast<float>(i)
-                             / static_cast<float>(breakpointCount);
+                             / static_cast<float>(numBreakpoints);
             amplitudes[i] = std::sin(angle) * 0.55f;
             durations[i] = 1.0f;
             amplitudeStepState[i] = 0.0f;
@@ -99,13 +106,9 @@ private:
 
     void evolveBreakpoint(std::size_t index) noexcept
     {
-        // Maximum displacement of the SECONDARY walks.
         const auto maxAmpStep = juce::jmap(amplitudeWalk, 0.0002f, 0.24f);
         const auto maxTimeStep = juce::jmap(timeWalk, 0.0002f, 0.20f);
 
-        // PRIMARY random walks: their positions become the next secondary step.
-        // This cascade is the important GENDYN/Gendy3 behaviour missing from the
-        // earlier Veloria prototype.
         amplitudeStepState[index] = reflect(
             amplitudeStepState[index] + bipolarRandom() * maxAmpStep * 0.35f,
             -maxAmpStep,
@@ -116,7 +119,6 @@ private:
             -maxTimeStep,
             maxTimeStep);
 
-        // SECONDARY walks: move the actual waveform breakpoint coordinates.
         amplitudes[index] = reflect(
             amplitudes[index] + amplitudeStepState[index],
             -amplitudeMirror,
@@ -140,9 +142,6 @@ private:
 
     [[nodiscard]] float bipolarRandom() noexcept
     {
-        // Uniform distribution for the first verified instrument build. Xenakis
-        // also explored Cauchy, logistic and other distributions; those belong in
-        // later research once this core behaviour is established and tested.
         return random.nextFloat() * 2.0f - 1.0f;
     }
 
@@ -151,8 +150,6 @@ private:
         if (maximum <= minimum)
             return minimum;
 
-        // Reflect rather than clip: values that cross a mirror bounce back by the
-        // amount they exceeded it, matching the DSS/GENDYN barrier principle.
         while (value < minimum || value > maximum)
         {
             if (value > maximum)
@@ -163,12 +160,10 @@ private:
         return value;
     }
 
-    static constexpr std::size_t breakpointCount = 12;
-
-    std::array<float, breakpointCount> amplitudes {};
-    std::array<float, breakpointCount> durations {};
-    std::array<float, breakpointCount> amplitudeStepState {};
-    std::array<float, breakpointCount> timeStepState {};
+    std::array<float, numBreakpoints> amplitudes {};
+    std::array<float, numBreakpoints> durations {};
+    std::array<float, numBreakpoints> amplitudeStepState {};
+    std::array<float, numBreakpoints> timeStepState {};
 
     juce::Random random { 1 };
     double sampleRate { 44100.0 };
