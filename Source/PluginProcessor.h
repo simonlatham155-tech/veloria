@@ -46,11 +46,19 @@ public:
     void setStateInformation(const void*, int) override;
 
     void discover();
+    void newField();
     juce::StringArray getFactoryPresetNames() const;
     VisualState getVisualState() const noexcept;
 
+    // Persistent user preset library.
+    juce::StringArray getUserPresetNames() const;
+    bool saveUserPreset(const juce::String& name);
+    bool loadUserPreset(const juce::String& name);
+    bool renameUserPreset(const juce::String& oldName, const juce::String& newName);
+    bool deleteUserPreset(const juce::String& name);
+
     // Native MIDI learn. The UI selects a parameter; the next incoming MIDI CC
-    // becomes its controller. Mappings are stored with the plugin state.
+    // becomes its controller. Mappings are stored with project and preset state.
     void beginMidiLearn(const juce::String& parameterId) noexcept;
     void clearMidiMapping(const juce::String& parameterId) noexcept;
     int getMidiCCForParameter(const juce::String& parameterId) const noexcept;
@@ -84,7 +92,7 @@ private:
     };
 
     static constexpr int maxVoices = 8;
-    static constexpr int midiLearnParameterCount = 11;
+    static constexpr int midiLearnParameterCount = 10;
     static const std::array<FactoryPreset, 10> factoryPresets;
     static const std::array<const char*, midiLearnParameterCount> midiLearnParameterIds;
 
@@ -99,6 +107,13 @@ private:
     int findMidiParameterIndex(const juce::String& id) const noexcept;
     void handleMidiController(const juce::MidiMessage& message) noexcept;
     void publishVisualState(float energy) noexcept;
+
+    juce::File getUserPresetDirectory() const;
+    juce::File getUserPresetFile(const juce::String& name) const;
+    juce::ValueTree makeSerializableState() const;
+    void restoreSerializableState(const juce::ValueTree& state);
+    void appendMidiMappingsToState(juce::ValueTree& state) const;
+    void restoreMidiMappingsFromState(const juce::ValueTree& state);
 
     std::array<Voice, maxVoices> voices;
     juce::dsp::Gain<float> outputGain;
