@@ -10,14 +10,19 @@ VeloriaAudioProcessor::VeloriaAudioProcessor()
 juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> layout;
-    for (const auto& item : std::array<std::pair<const char*, float>, 4> {{
-             { "stability", 0.85f }, { "life", 0.35f }, { "focus", 0.55f }, { "bloom", 0.45f } }})
-        layout.push_back(std::make_unique<juce::AudioParameterFloat>(item.first, item.first,
-            juce::NormalisableRange<float>(0.0f, 1.0f), item.second));
 
     layout.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "ampWalk", "Amplitude Walk", juce::NormalisableRange<float>(0.0f, 1.0f), 0.14f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "timeWalk", "Time Walk", juce::NormalisableRange<float>(0.0f, 1.0f), 0.08f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "correlation", "Correlation", juce::NormalisableRange<float>(0.0f, 1.0f), 0.22f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "curve", "Curve", juce::NormalisableRange<float>(0.0f, 1.0f), 0.65f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>(
         "level", "Level", juce::NormalisableRange<float>(-48.0f, 0.0f), -12.0f));
-    layout.push_back(std::make_unique<juce::AudioParameterInt>("seed", "Seed", 1, 999999, 1));
+    layout.push_back(std::make_unique<juce::AudioParameterInt>("seed", "Seed", 1, 999999, 2207));
+
     return { layout.begin(), layout.end() };
 }
 
@@ -25,11 +30,15 @@ void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 {
     oscillator.prepare(sampleRate);
     amplitudeEnvelope.setSampleRate(sampleRate);
-    envelopeParameters.attack = 0.35f;
-    envelopeParameters.decay = 1.2f;
-    envelopeParameters.sustain = 0.78f;
-    envelopeParameters.release = 2.5f;
+
+    // Preset 01 is deliberately neutral: enough attack/release to audition the
+    // evolving source without masking it with a conventional synth envelope.
+    envelopeParameters.attack = 0.08f;
+    envelopeParameters.decay = 0.45f;
+    envelopeParameters.sustain = 0.88f;
+    envelopeParameters.release = 1.4f;
     amplitudeEnvelope.setParameters(envelopeParameters);
+
     outputGain.prepare({ sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
 }
 
@@ -53,6 +62,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         {
             currentMidiNote = message.getNoteNumber();
             currentFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(currentMidiNote));
+            oscillator.reset();
             amplitudeEnvelope.noteOn();
         }
         else if (message.isNoteOff() && message.getNoteNumber() == currentMidiNote)
@@ -63,10 +73,10 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     }
 
     oscillator.setFrequency(currentFrequency);
-    oscillator.setStability(parameters.getRawParameterValue("stability")->load());
-    oscillator.setLife(parameters.getRawParameterValue("life")->load());
-    oscillator.setFocus(parameters.getRawParameterValue("focus")->load());
-    oscillator.setBloom(parameters.getRawParameterValue("bloom")->load());
+    oscillator.setAmplitudeWalk(parameters.getRawParameterValue("ampWalk")->load());
+    oscillator.setTimeWalk(parameters.getRawParameterValue("timeWalk")->load());
+    oscillator.setCorrelation(parameters.getRawParameterValue("correlation")->load());
+    oscillator.setCurve(parameters.getRawParameterValue("curve")->load());
 
     const auto requestedSeed = static_cast<std::uint32_t>(parameters.getRawParameterValue("seed")->load());
     if (requestedSeed != currentSeed)
@@ -77,7 +87,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        const auto value = oscillator.processSample() * amplitudeEnvelope.getNextSample() * 0.35f;
+        const auto value = oscillator.processSample() * amplitudeEnvelope.getNextSample() * 0.42f;
         for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
             buffer.setSample(channel, sample, value);
     }
