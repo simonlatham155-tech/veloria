@@ -10,7 +10,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     title.setFont(juce::FontOptions(42.0f, juce::Font::bold));
     addAndMakeVisible(title);
 
-    subtitle.setText("DYNAMIC STOCHASTIC INSTRUMENT", juce::dontSendNotification);
+    subtitle.setText("GENDYN CORE — DYNAMIC STOCHASTIC INSTRUMENT", juce::dontSendNotification);
     subtitle.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(subtitle);
 
@@ -36,13 +36,13 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     monoButton.setClickingTogglesState(true);
     addAndMakeVisible(monoButton);
 
-    midiHint.setText("All parameters are host-automatable — use Ableton MIDI Map for controller testing", juce::dontSendNotification);
+    midiHint.setText("GENDYN controls are host-automatable — use Ableton MIDI Map for controller testing", juce::dontSendNotification);
     midiHint.setJustificationType(juce::Justification::centred);
     midiHint.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.55f));
     midiHint.setFont(juce::FontOptions(12.0f));
     addAndMakeVisible(midiHint);
 
-    for (auto* slider : { &ampWalk, &timeWalk, &correlation, &curve, &level })
+    for (auto* slider : { &ampWalk, &timeWalk, &ampMirror, &timeMirror, &level })
     {
         slider->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         slider->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 90, 22);
@@ -51,8 +51,8 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 
     ampWalkAttachment = std::make_unique<SliderAttachment>(processor.parameters, "ampWalk", ampWalk);
     timeWalkAttachment = std::make_unique<SliderAttachment>(processor.parameters, "timeWalk", timeWalk);
-    correlationAttachment = std::make_unique<SliderAttachment>(processor.parameters, "correlation", correlation);
-    curveAttachment = std::make_unique<SliderAttachment>(processor.parameters, "curve", curve);
+    ampMirrorAttachment = std::make_unique<SliderAttachment>(processor.parameters, "ampMirror", ampMirror);
+    timeMirrorAttachment = std::make_unique<SliderAttachment>(processor.parameters, "timeMirror", timeMirror);
     levelAttachment = std::make_unique<SliderAttachment>(processor.parameters, "level", level);
     monoAttachment = std::make_unique<ButtonAttachment>(processor.parameters, "mono", monoButton);
 }
@@ -69,8 +69,8 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     const std::array<std::pair<juce::Slider*, const char*>, 5> labels {{
         { &ampWalk, "AMP WALK" },
         { &timeWalk, "TIME WALK" },
-        { &correlation, "CORRELATION" },
-        { &curve, "CURVE" },
+        { &ampMirror, "AMP MIRROR" },
+        { &timeMirror, "TIME MIRROR" },
         { &level, "OUTPUT" }
     }};
 
@@ -99,10 +99,9 @@ void VeloriaAudioProcessorEditor::resized()
     monoButton.setBounds(toolbar.removeFromLeft(105));
 
     area.removeFromTop(76);
-
     auto controls = area.removeFromTop(175);
     const auto width = controls.getWidth() / 5;
-    for (auto* slider : { &ampWalk, &timeWalk, &correlation, &curve, &level })
+    for (auto* slider : { &ampWalk, &timeWalk, &ampMirror, &timeMirror, &level })
         slider->setBounds(controls.removeFromLeft(width).withSizeKeepingCentre(135, 150));
 
     area.removeFromTop(35);
