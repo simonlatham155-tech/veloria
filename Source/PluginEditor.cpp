@@ -3,28 +3,28 @@
 VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& p)
     : AudioProcessorEditor(&p), processor(p)
 {
-    setSize(820, 500);
+    setSize(860, 500);
 
     title.setText("VELORIA", juce::dontSendNotification);
     title.setJustificationType(juce::Justification::centred);
     title.setFont(juce::FontOptions(42.0f, juce::Font::bold));
     addAndMakeVisible(title);
 
-    subtitle.setText("PAD 01 — Core / Body / Life", juce::dontSendNotification);
+    subtitle.setText("PRESET 01 — STOCHASTIC CORE", juce::dontSendNotification);
     subtitle.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(subtitle);
 
-    for (auto* slider : { &stability, &life, &focus, &bloom, &level })
+    for (auto* slider : { &ampWalk, &timeWalk, &correlation, &curve, &level })
     {
         slider->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         slider->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 90, 22);
         addAndMakeVisible(slider);
     }
 
-    stabilityAttachment = std::make_unique<SliderAttachment>(processor.parameters, "stability", stability);
-    lifeAttachment = std::make_unique<SliderAttachment>(processor.parameters, "life", life);
-    focusAttachment = std::make_unique<SliderAttachment>(processor.parameters, "focus", focus);
-    bloomAttachment = std::make_unique<SliderAttachment>(processor.parameters, "bloom", bloom);
+    ampWalkAttachment = std::make_unique<SliderAttachment>(processor.parameters, "ampWalk", ampWalk);
+    timeWalkAttachment = std::make_unique<SliderAttachment>(processor.parameters, "timeWalk", timeWalk);
+    correlationAttachment = std::make_unique<SliderAttachment>(processor.parameters, "correlation", correlation);
+    curveAttachment = std::make_unique<SliderAttachment>(processor.parameters, "curve", curve);
     levelAttachment = std::make_unique<SliderAttachment>(processor.parameters, "level", level);
 }
 
@@ -38,8 +38,12 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawRoundedRectangle(panel, 18.0f, 1.5f);
 
     const std::array<std::pair<juce::Slider*, const char*>, 5> labels {{
-        { &stability, "STABILITY" }, { &life, "LIFE" }, { &focus, "FOCUS" },
-        { &bloom, "BLOOM" }, { &level, "OUTPUT" } }};
+        { &ampWalk, "AMP WALK" },
+        { &timeWalk, "TIME WALK" },
+        { &correlation, "CORRELATION" },
+        { &curve, "CURVE" },
+        { &level, "OUTPUT" }
+    }};
 
     g.setColour(juce::Colours::white.withAlpha(0.78f));
     g.setFont(13.0f);
@@ -55,6 +59,6 @@ void VeloriaAudioProcessorEditor::resized()
     area.removeFromTop(70);
 
     const auto width = area.getWidth() / 5;
-    for (auto* slider : { &stability, &life, &focus, &bloom, &level })
-        slider->setBounds(area.removeFromLeft(width).withSizeKeepingCentre(125, 145));
+    for (auto* slider : { &ampWalk, &timeWalk, &correlation, &curve, &level })
+        slider->setBounds(area.removeFromLeft(width).withSizeKeepingCentre(130, 145));
 }
