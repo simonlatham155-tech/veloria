@@ -29,6 +29,8 @@ juce_add_plugin(Veloria
     COPY_PLUGIN_AFTER_BUILD FALSE
 )
 
+juce_generate_juce_header(Veloria)
+
 target_sources(Veloria
     PRIVATE
         Source/PluginProcessor.cpp
