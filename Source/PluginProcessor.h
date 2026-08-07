@@ -2,12 +2,23 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include "dsp/StochasticOscillator.h"
 
 class VeloriaAudioProcessor final : public juce::AudioProcessor
 {
 public:
+    static constexpr std::size_t visualBreakpointCount = veloria::dsp::StochasticOscillator::numBreakpoints;
+
+    struct VisualState
+    {
+        std::array<float, visualBreakpointCount> amplitudes {};
+        std::array<float, visualBreakpointCount> durations {};
+        int activeVoices { 0 };
+        float energy { 0.0f };
+    };
+
     VeloriaAudioProcessor();
     ~VeloriaAudioProcessor() override = default;
 
@@ -36,6 +47,7 @@ public:
 
     void discover();
     juce::StringArray getFactoryPresetNames() const;
+    VisualState getVisualState() const noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
 
@@ -74,13 +86,19 @@ private:
     Voice& findVoiceToStart();
     void updateVoiceParameters();
     void applyFactoryPreset(int index);
-    void setParameter(const juce::String& id, float value);
+    void setParameterValue(const juce::String& id, float value);
+    void publishVisualState(float energy) noexcept;
 
     std::array<Voice, maxVoices> voices;
     juce::dsp::Gain<float> outputGain;
     juce::Random discoveryRandom { 0x56454c4f };
     std::uint64_t voiceCounter { 0 };
     int currentProgram { 0 };
+
+    std::array<std::atomic<float>, visualBreakpointCount> visualAmplitudes {};
+    std::array<std::atomic<float>, visualBreakpointCount> visualDurations {};
+    std::atomic<int> visualActiveVoices { 0 };
+    std::atomic<float> visualEnergy { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessor)
 };
