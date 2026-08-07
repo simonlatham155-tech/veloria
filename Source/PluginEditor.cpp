@@ -7,7 +7,6 @@ const auto background = juce::Colour::fromRGB(4, 5, 9);
 const auto panel = juce::Colour::fromRGB(10, 12, 18);
 const auto panel2 = juce::Colour::fromRGB(15, 16, 24);
 const auto purple = juce::Colour::fromRGB(181, 83, 255);
-const auto violet = juce::Colour::fromRGB(111, 73, 255);
 const auto magenta = juce::Colour::fromRGB(255, 76, 191);
 const auto gold = juce::Colour::fromRGB(255, 180, 82);
 const auto orange = juce::Colour::fromRGB(255, 112, 56);
@@ -61,16 +60,43 @@ void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
     g.setColour(juce::Colours::white.withAlpha(0.95f));
     g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(centre.x, centre.y));
 
-    const auto sparkleCount = 16;
-    for (int i = 0; i < sparkleCount; ++i)
+    for (int i = 0; i < 16; ++i)
     {
-        const auto a = static_cast<float>(i) / sparkleCount * juce::MathConstants<float>::twoPi;
+        const auto a = static_cast<float>(i) / 16.0f * juce::MathConstants<float>::twoPi;
         const auto rr = radius * (1.04f + 0.11f * std::sin(a * 3.0f + sliderPosProportional * 5.0f));
         const auto px = centre.x + std::cos(a) * rr;
         const auto py = centre.y + std::sin(a) * rr;
         g.setColour((i % 3 == 0 ? gold : purple).withAlpha(0.10f + sliderPosProportional * 0.16f));
         g.fillEllipse(px - 1.0f, py - 1.0f, 2.0f, 2.0f);
     }
+}
+
+void VeloriaAudioProcessorEditor::MidiLearnSlider::mouseDown(const juce::MouseEvent& event)
+{
+    if (! event.mods.isPopupMenu())
+    {
+        juce::Slider::mouseDown(event);
+        return;
+    }
+
+    const auto currentCC = currentCCCallback ? currentCCCallback() : -1;
+    juce::PopupMenu menu;
+    menu.addItem(1, currentCC >= 0
+        ? "Relearn MIDI CC (currently CC " + juce::String(currentCC) + ")"
+        : "Learn MIDI CC");
+    menu.addItem(2, "Clear MIDI CC", currentCC >= 0);
+
+    juce::Component::SafePointer<MidiLearnSlider> safeThis(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+                       [safeThis](int result)
+                       {
+                           if (safeThis == nullptr)
+                               return;
+                           if (result == 1 && safeThis->learnCallback)
+                               safeThis->learnCallback();
+                           else if (result == 2 && safeThis->clearCallback)
+                               safeThis->clearCallback();
+                       });
 }
 
 VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& p)
@@ -94,25 +120,39 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     subtitle.setFont(juce::FontOptions(10.0f));
     addAndMakeVisible(subtitle);
 
-    auto names = audioProcessor.getFactoryPresetNames();
-    for (int i = 0; i < names.size(); ++i)
-        presetBox.addItem(names[i], i + 1);
-    presetBox.setSelectedId(juce::jmax(1, audioProcessor.getCurrentProgram() + 1), juce::dontSendNotification);
-    presetBox.onChange = [this]
-    {
-        const auto index = presetBox.getSelectedId() - 1;
-        if (index >= 0)
-            audioProcessor.setCurrentProgram(index);
-    };
     presetBox.setColour(juce::ComboBox::backgroundColourId, panel2);
     presetBox.setColour(juce::ComboBox::outlineColourId, purple.withAlpha(0.38f));
     presetBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    presetBox.onChange = [this]
+    {
+        const auto id = presetBox.getSelectedId();
+        const auto factoryCount = audioProcessor.getFactoryPresetNames().size();
+
+        if (id > 0 && id <= factoryCount)
+        {
+            audioProcessor.setCurrentProgram(id - 1);
+            presetNameEditor.setText(presetBox.getText() + " Copy", juce::dontSendNotification);
+            presetStatus.setText("FACTORY PRESET — SAVE AS USER PRESET TO RENAME", juce::dontSendNotification);
+        }
+        else if (id >= firstUserPresetId)
+        {
+            const auto name = presetBox.getText();
+            if (audioProcessor.loadUserPreset(name))
+            {
+                presetNameEditor.setText(name, juce::dontSendNotification);
+                presetStatus.setText("USER PRESET LOADED", juce::dontSendNotification);
+            }
+        }
+    };
     addAndMakeVisible(presetBox);
+    refreshPresetBox();
 
     discoverButton.onClick = [this]
     {
         audioProcessor.discover();
         presetBox.setText("Discovered", juce::dontSendNotification);
+        presetNameEditor.setText("", juce::dontSendNotification);
+        presetStatus.setText("DISCOVERED FIELD — NAME IT AND PRESS SAVE", juce::dontSendNotification);
     };
     discoverButton.setColour(juce::TextButton::buttonColourId, purple.withAlpha(0.30f));
     discoverButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -120,8 +160,9 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 
     newFieldButton.onClick = [this]
     {
-        seed.setValue(1 + uiRandom.nextInt(999998), juce::sendNotificationSync);
+        audioProcessor.newField();
         presetBox.setText("Field Variation", juce::dontSendNotification);
+        presetStatus.setText("NEW FIELD — SETTINGS KEPT, STOCHASTIC SEED CHANGED", juce::dontSendNotification);
     };
     newFieldButton.setColour(juce::TextButton::buttonColourId, orange.withAlpha(0.24f));
     newFieldButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -132,10 +173,20 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     monoButton.setColour(juce::ToggleButton::tickColourId, cyan);
     addAndMakeVisible(monoButton);
 
+    configureKnob(ampWalk, "ampWalk", "AMP WALK");
+    configureKnob(timeWalk, "timeWalk", "TIME WALK");
+    configureKnob(ampMirror, "ampMirror", "AMP MIRROR");
+    configureKnob(timeMirror, "timeMirror", "TIME MIRROR");
+    configureKnob(attack, "attack", "ATTACK");
+    configureKnob(decay, "decay", "DECAY");
+    configureKnob(sustain, "sustain", "SUSTAIN");
+    configureKnob(release, "release", "RELEASE");
+    configureKnob(seed, "seed", "FIELD SEED");
+    configureKnob(level, "level", "LEVEL");
+
     for (auto* slider : { &ampWalk, &timeWalk, &ampMirror, &timeMirror,
                            &attack, &decay, &sustain, &release, &seed, &level })
     {
-        configureKnob(*slider);
         slider->setLookAndFeel(&auroraLookAndFeel);
         addAndMakeVisible(slider);
     }
@@ -156,6 +207,68 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     levelAttachment = std::make_unique<SliderAttachment>(audioProcessor.parameters, "level", level);
     monoAttachment = std::make_unique<ButtonAttachment>(audioProcessor.parameters, "mono", monoButton);
 
+    presetNameEditor.setTextToShowWhenEmpty("Name discovered preset...", juce::Colours::white.withAlpha(0.28f));
+    presetNameEditor.setColour(juce::TextEditor::backgroundColourId, panel2);
+    presetNameEditor.setColour(juce::TextEditor::outlineColourId, purple.withAlpha(0.30f));
+    presetNameEditor.setColour(juce::TextEditor::textColourId, juce::Colours::white);
+    addAndMakeVisible(presetNameEditor);
+
+    for (auto* button : { &savePresetButton, &renamePresetButton, &deletePresetButton })
+    {
+        button->setColour(juce::TextButton::buttonColourId, purple.withAlpha(0.20f));
+        button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        addAndMakeVisible(button);
+    }
+    deletePresetButton.setColour(juce::TextButton::buttonColourId, orange.withAlpha(0.18f));
+
+    savePresetButton.onClick = [this]
+    {
+        const auto name = presetNameEditor.getText().trim();
+        if (audioProcessor.saveUserPreset(name))
+        {
+            refreshPresetBox(name);
+            presetStatus.setText("USER PRESET SAVED", juce::dontSendNotification);
+        }
+        else
+            presetStatus.setText("ENTER A VALID PRESET NAME", juce::dontSendNotification);
+    };
+
+    renamePresetButton.onClick = [this]
+    {
+        if (! selectedPresetIsUser())
+        {
+            presetStatus.setText("FACTORY PRESETS ARE READ-ONLY — PRESS SAVE TO MAKE A USER COPY", juce::dontSendNotification);
+            return;
+        }
+
+        const auto oldName = presetBox.getText();
+        const auto newName = presetNameEditor.getText().trim();
+        if (audioProcessor.renameUserPreset(oldName, newName))
+        {
+            refreshPresetBox(newName);
+            presetStatus.setText("USER PRESET RENAMED", juce::dontSendNotification);
+        }
+        else
+            presetStatus.setText("RENAME FAILED — NAME MAY ALREADY EXIST", juce::dontSendNotification);
+    };
+
+    deletePresetButton.onClick = [this]
+    {
+        if (! selectedPresetIsUser())
+        {
+            presetStatus.setText("FACTORY PRESETS CANNOT BE DELETED", juce::dontSendNotification);
+            return;
+        }
+
+        const auto name = presetBox.getText();
+        if (audioProcessor.deleteUserPreset(name))
+        {
+            refreshPresetBox();
+            presetNameEditor.clear();
+            presetStatus.setText("USER PRESET DELETED", juce::dontSendNotification);
+        }
+    };
+
     fieldStatus.setJustificationType(juce::Justification::centred);
     fieldStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.62f));
     fieldStatus.setFont(juce::FontOptions(10.0f));
@@ -166,7 +279,13 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     voiceStatus.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     addAndMakeVisible(voiceStatus);
 
-    footerStatus.setText("GENDYN CORE  //  12 BREAKPOINTS  //  HOST AUTOMATABLE  //  ABLETON MIDI MAP READY",
+    presetStatus.setJustificationType(juce::Justification::centredLeft);
+    presetStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.45f));
+    presetStatus.setFont(juce::FontOptions(9.0f));
+    presetStatus.setText("RIGHT-CLICK ANY KNOB FOR MIDI LEARN", juce::dontSendNotification);
+    addAndMakeVisible(presetStatus);
+
+    footerStatus.setText("GENDYN CORE  //  12 BREAKPOINTS  //  USER PRESETS  //  RIGHT-CLICK MIDI LEARN",
                          juce::dontSendNotification);
     footerStatus.setJustificationType(juce::Justification::centred);
     footerStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.30f));
@@ -184,13 +303,67 @@ VeloriaAudioProcessorEditor::~VeloriaAudioProcessorEditor()
         slider->setLookAndFeel(nullptr);
 }
 
-void VeloriaAudioProcessorEditor::configureKnob(juce::Slider& slider)
+void VeloriaAudioProcessorEditor::configureKnob(MidiLearnSlider& slider,
+                                                 const juce::String& parameterId,
+                                                 const juce::String& displayName)
 {
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 76, 18);
     slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha(0.78f));
     slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
     slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::white.withAlpha(0.08f));
+
+    slider.learnCallback = [this, parameterId, displayName]
+    {
+        audioProcessor.beginMidiLearn(parameterId);
+        presetStatus.setText(displayName + " — MOVE A MIDI CC NOW", juce::dontSendNotification);
+    };
+    slider.clearCallback = [this, parameterId, displayName]
+    {
+        audioProcessor.clearMidiMapping(parameterId);
+        presetStatus.setText(displayName + " — MIDI MAPPING CLEARED", juce::dontSendNotification);
+    };
+    slider.currentCCCallback = [this, parameterId]
+    {
+        return audioProcessor.getMidiCCForParameter(parameterId);
+    };
+}
+
+void VeloriaAudioProcessorEditor::refreshPresetBox(const juce::String& selectUserPreset)
+{
+    presetBox.clear(juce::dontSendNotification);
+    presetBox.addSectionHeading("FACTORY");
+
+    const auto factoryNames = audioProcessor.getFactoryPresetNames();
+    for (int i = 0; i < factoryNames.size(); ++i)
+        presetBox.addItem(factoryNames[i], i + 1);
+
+    const auto userNames = audioProcessor.getUserPresetNames();
+    if (! userNames.isEmpty())
+    {
+        presetBox.addSeparator();
+        presetBox.addSectionHeading("USER PRESETS");
+        for (int i = 0; i < userNames.size(); ++i)
+            presetBox.addItem(userNames[i], firstUserPresetId + i);
+    }
+
+    if (selectUserPreset.isNotEmpty())
+    {
+        const auto index = userNames.indexOf(selectUserPreset);
+        if (index >= 0)
+            presetBox.setSelectedId(firstUserPresetId + index, juce::dontSendNotification);
+    }
+    else
+    {
+        const auto program = audioProcessor.getCurrentProgram();
+        if (program >= 0 && program < factoryNames.size())
+            presetBox.setSelectedId(program + 1, juce::dontSendNotification);
+    }
+}
+
+bool VeloriaAudioProcessorEditor::selectedPresetIsUser() const noexcept
+{
+    return presetBox.getSelectedId() >= firstUserPresetId;
 }
 
 void VeloriaAudioProcessorEditor::timerCallback()
@@ -208,7 +381,8 @@ void VeloriaAudioProcessorEditor::timerCallback()
     repaint();
 }
 
-void VeloriaAudioProcessorEditor::drawPanel(juce::Graphics& g, juce::Rectangle<float> bounds, const juce::String& panelTitle)
+void VeloriaAudioProcessorEditor::drawPanel(juce::Graphics& g, juce::Rectangle<float> bounds,
+                                             const juce::String& panelTitle)
 {
     g.setColour(panel.withAlpha(0.92f));
     g.fillRoundedRectangle(bounds, 10.0f);
@@ -238,7 +412,7 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     drawPanel(g, { 1260.0f, 392.0f, 222.0f, 267.0f }, "VOICE / STATE");
     drawPanel(g, { 18.0f, 676.0f, 460.0f, 220.0f }, "AMPLITUDE ENVELOPE");
     drawPanel(g, { 492.0f, 676.0f, 300.0f, 220.0f }, "FIELD CONTROLS");
-    drawPanel(g, { 806.0f, 676.0f, 440.0f, 220.0f }, "FIELD TELEMETRY");
+    drawPanel(g, { 806.0f, 676.0f, 440.0f, 220.0f }, "USER PRESETS / TELEMETRY");
     drawPanel(g, { 1260.0f, 676.0f, 222.0f, 220.0f }, "OUTPUT");
 
     drawStochasticGlobe(g, { 270.0f, 102.0f, 970.0f, 555.0f });
@@ -267,15 +441,16 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("NEW FIELD keeps settings and changes seed", 1280, 566, 175, 42, juce::Justification::centredLeft, true);
 
     g.setColour(juce::Colours::white.withAlpha(0.42f));
-    g.drawText("The aurora follows live breakpoint amplitude and timing.", 825, 732, 395, 22,
+    g.drawText("Aurora follows live breakpoint amplitude and timing.", 825, 720, 395, 20,
                juce::Justification::centredLeft);
-    g.drawText("Purple / magenta = stable field; gold = energetic motion.", 825, 760, 395, 22,
+    g.drawText("Name a sound below, then SAVE it permanently.", 825, 747, 395, 20,
                juce::Justification::centredLeft);
-    g.drawText("Every visible node is a real GENDYN breakpoint.", 825, 788, 395, 22,
+    g.drawText("Right-click any knob for internal MIDI Learn.", 825, 774, 395, 20,
                juce::Justification::centredLeft);
 }
 
-void VeloriaAudioProcessorEditor::drawKnobLabel(juce::Graphics& g, juce::Slider& slider, const juce::String& text)
+void VeloriaAudioProcessorEditor::drawKnobLabel(juce::Graphics& g, juce::Slider& slider,
+                                                 const juce::String& text)
 {
     auto labelBounds = slider.getBounds().translated(0, -21);
     g.setColour(juce::Colours::white.withAlpha(0.78f));
@@ -358,7 +533,6 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
                       centre.y + std::sin(angle) * radial * depth };
     }
 
-    // Aurora ribbons interpolate between the real GENDYN breakpoints.
     for (int ribbon = 0; ribbon < 9; ++ribbon)
     {
         juce::Path aurora;
@@ -395,7 +569,6 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
                                                   juce::PathStrokeType::rounded));
     }
 
-    // Particle traces run along interpolated segments, not arbitrary decoration.
     for (std::size_t segment = 0; segment < points.size(); ++segment)
     {
         const auto next = (segment + 1) % points.size();
@@ -461,5 +634,12 @@ void VeloriaAudioProcessorEditor::resized()
     fieldStatus.setBounds(645, 754, 120, 55);
     voiceStatus.setBounds(1280, 412, 170, 24);
     level.setBounds(1303, 735, 135, 135);
+
+    presetNameEditor.setBounds(825, 812, 180, 30);
+    savePresetButton.setBounds(1013, 812, 62, 30);
+    renamePresetButton.setBounds(1082, 812, 72, 30);
+    deletePresetButton.setBounds(1161, 812, 66, 30);
+    presetStatus.setBounds(825, 848, 402, 25);
+
     footerStatus.setBounds(430, 908, 650, 18);
 }
