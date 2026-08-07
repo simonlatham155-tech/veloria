@@ -46,6 +46,7 @@ public:
     void setStateInformation(const void*, int) override;
 
     void discover();
+    void newField();
     juce::StringArray getFactoryPresetNames() const;
     VisualState getVisualState() const noexcept;
 
