@@ -56,8 +56,8 @@ private:
         const char* name;
         float ampWalk;
         float timeWalk;
-        float correlation;
-        float curve;
+        float ampMirror;
+        float timeMirror;
         float attack;
         float decay;
         float sustain;
@@ -79,7 +79,6 @@ private:
     std::array<Voice, maxVoices> voices;
     juce::dsp::Gain<float> outputGain;
     juce::Random discoveryRandom { 0x56454c4f };
-    double currentSampleRate { 44100.0 };
     std::uint64_t voiceCounter { 0 };
     int currentProgram { 0 };
 
