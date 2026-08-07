@@ -13,12 +13,11 @@ public:
     void prepare(double newSampleRate)
     {
         sampleRate = juce::jmax(1.0, newSampleRate);
-        initialiseWaveform();
+        reset();
     }
 
     void reset() noexcept
     {
-        phase = 0.0;
         segmentIndex = 0;
         segmentPhase = 0.0;
         initialiseWaveform();
@@ -29,10 +28,10 @@ public:
         frequency = juce::jlimit(20.0f, 18000.0f, newFrequency);
     }
 
-    void setStability(float value) noexcept { stability = juce::jlimit(0.0f, 1.0f, value); }
-    void setLife(float value) noexcept { life = juce::jlimit(0.0f, 1.0f, value); }
-    void setFocus(float value) noexcept { focus = juce::jlimit(0.0f, 1.0f, value); }
-    void setBloom(float value) noexcept { bloom = juce::jlimit(0.0f, 1.0f, value); }
+    void setAmplitudeWalk(float value) noexcept { amplitudeWalk = juce::jlimit(0.0f, 1.0f, value); }
+    void setTimeWalk(float value) noexcept { timeWalk = juce::jlimit(0.0f, 1.0f, value); }
+    void setCorrelation(float value) noexcept { correlation = juce::jlimit(0.0f, 1.0f, value); }
+    void setCurve(float value) noexcept { curve = juce::jlimit(0.0f, 1.0f, value); }
 
     void setSeed(std::uint32_t newSeed) noexcept
     {
@@ -42,25 +41,24 @@ public:
 
         seed = safeSeed;
         random.setSeed(static_cast<juce::int64>(seed));
-        initialiseWaveform();
+        reset();
     }
 
     [[nodiscard]] float processSample() noexcept
     {
         const auto nextIndex = (segmentIndex + 1) % breakpointCount;
-        const auto shapedPhase = interpolationCurve(static_cast<float>(segmentPhase));
-        const auto sample = juce::jmap(shapedPhase,
-                                      amplitudes[segmentIndex],
-                                      amplitudes[nextIndex]);
+        const auto t = interpolationCurve(static_cast<float>(segmentPhase));
+        const auto output = juce::jmap(t, amplitudes[segmentIndex], amplitudes[nextIndex]);
 
+        // Durations are normalised each cycle, so their stochastic movement changes
+        // waveform geometry while the complete cycle remains locked to MIDI pitch.
         const auto totalDuration = durationSum();
-        const auto cyclesPerSample = static_cast<double>(frequency) / sampleRate;
         const auto normalisedDuration = durations[segmentIndex] / totalDuration;
-        const auto segmentIncrement = cyclesPerSample / juce::jmax(1.0e-6, static_cast<double>(normalisedDuration));
+        const auto cyclesPerSample = static_cast<double>(frequency) / sampleRate;
+        const auto segmentIncrement = cyclesPerSample
+                                    / juce::jmax(1.0e-7, static_cast<double>(normalisedDuration));
 
         segmentPhase += segmentIncrement;
-        phase += cyclesPerSample;
-
         if (segmentPhase >= 1.0)
         {
             segmentPhase -= std::floor(segmentPhase);
@@ -68,50 +66,51 @@ public:
             segmentIndex = nextIndex;
         }
 
-        if (phase >= 1.0)
-            phase -= std::floor(phase);
-
-        return std::tanh(sample * (0.85f + bloom * 0.65f));
+        return output * 0.82f;
     }
 
 private:
     void initialiseWaveform() noexcept
     {
-        phase = 0.0;
-        segmentIndex = 0;
-        segmentPhase = 0.0;
-
+        // Start from a neutral, low-complexity closed waveform. From this point on,
+        // both amplitude and time coordinates evolve only through bounded random walks.
         for (std::size_t i = 0; i < breakpointCount; ++i)
         {
             const auto angle = juce::MathConstants<float>::twoPi
                              * static_cast<float>(i)
                              / static_cast<float>(breakpointCount);
-            amplitudes[i] = std::sin(angle) * 0.75f;
+            amplitudes[i] = std::sin(angle) * 0.7f;
             durations[i] = 1.0f;
         }
     }
 
     void evolveBreakpoint(std::size_t index) noexcept
     {
-        const auto amplitudeStep = (0.015f + life * 0.18f) * (1.0f - stability * 0.92f);
-        const auto durationStep = (0.004f + life * 0.055f) * (1.0f - stability * 0.85f);
+        // Direct dynamic-stochastic controls: random walks in amplitude and time,
+        // reflected at hard boundaries rather than clipped.
+        const auto ampStep = juce::jmap(amplitudeWalk, 0.0005f, 0.22f);
+        const auto durStep = juce::jmap(timeWalk, 0.0002f, 0.18f);
 
-        const auto spectralBias = 0.35f + focus * 0.65f;
-        const auto amplitudeDelta = bipolarRandom() * amplitudeStep * spectralBias;
-        const auto durationDelta = bipolarRandom() * durationStep;
+        auto newAmplitude = reflect(amplitudes[index] + bipolarRandom() * ampStep, -1.0f, 1.0f);
+        auto newDuration = reflect(durations[index] + bipolarRandom() * durStep, 0.16f, 3.0f);
 
-        amplitudes[index] = reflect(amplitudes[index] + amplitudeDelta, -1.0f, 1.0f);
-        durations[index] = reflect(durations[index] + durationDelta, 0.25f, 2.5f);
+        // Correlation is deliberately local: neighbouring breakpoints can evolve
+        // independently or behave more like one coherent moving shape.
+        const auto previous = (index + breakpointCount - 1) % breakpointCount;
+        const auto next = (index + 1) % breakpointCount;
+        const auto neighbourMean = 0.5f * (amplitudes[previous] + amplitudes[next]);
+        newAmplitude = juce::jmap(correlation, newAmplitude, neighbourMean);
 
-        const auto neighbour = (index + breakpointCount - 1) % breakpointCount;
-        const auto correlation = 0.08f + focus * 0.42f;
-        amplitudes[index] = juce::jmap(correlation, amplitudes[index], amplitudes[neighbour]);
+        amplitudes[index] = reflect(newAmplitude, -1.0f, 1.0f);
+        durations[index] = newDuration;
     }
 
     [[nodiscard]] float interpolationCurve(float t) const noexcept
     {
+        // Linear interpolation leaves the breakpoint geometry exposed; increasing
+        // Curve progressively smooths the transition without introducing a filter.
         const auto smooth = t * t * (3.0f - 2.0f * t);
-        return juce::jmap(focus, t, smooth);
+        return juce::jmap(curve, t, smooth);
     }
 
     [[nodiscard]] float durationSum() const noexcept
@@ -133,7 +132,7 @@ private:
         {
             if (value > maximum)
                 value = maximum - (value - maximum);
-            else if (value < minimum)
+            else
                 value = minimum + (minimum - value);
         }
         return value;
@@ -145,14 +144,13 @@ private:
 
     juce::Random random { 1 };
     double sampleRate { 44100.0 };
-    double phase { 0.0 };
     double segmentPhase { 0.0 };
     std::size_t segmentIndex { 0 };
     float frequency { 220.0f };
-    float stability { 0.85f };
-    float life { 0.35f };
-    float focus { 0.55f };
-    float bloom { 0.45f };
+    float amplitudeWalk { 0.14f };
+    float timeWalk { 0.08f };
+    float correlation { 0.22f };
+    float curve { 0.65f };
     std::uint32_t seed { 1 };
 };
 } // namespace veloria::dsp
