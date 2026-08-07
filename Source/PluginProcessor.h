@@ -46,22 +46,18 @@ public:
     void setStateInformation(const void*, int) override;
 
     void discover();
-    void newField();
     juce::StringArray getFactoryPresetNames() const;
     VisualState getVisualState() const noexcept;
 
-    // Persistent user preset library.
+    void beginMidiLearn(const juce::String& parameterId) noexcept;
+    void clearMidiMapping(const juce::String& parameterId) noexcept;
+    int getMidiCCForParameter(const juce::String& parameterId) const noexcept;
+
     juce::StringArray getUserPresetNames() const;
     bool saveUserPreset(const juce::String& name);
     bool loadUserPreset(const juce::String& name);
     bool renameUserPreset(const juce::String& oldName, const juce::String& newName);
     bool deleteUserPreset(const juce::String& name);
-
-    // Native MIDI learn. The UI selects a parameter; the next incoming MIDI CC
-    // becomes its controller. Mappings are stored with project and preset state.
-    void beginMidiLearn(const juce::String& parameterId) noexcept;
-    void clearMidiMapping(const juce::String& parameterId) noexcept;
-    int getMidiCCForParameter(const juce::String& parameterId) const noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
 
@@ -110,7 +106,7 @@ private:
 
     juce::File getUserPresetDirectory() const;
     juce::File getUserPresetFile(const juce::String& name) const;
-    juce::ValueTree makeSerializableState() const;
+    juce::ValueTree makeSerializableState();
     void restoreSerializableState(const juce::ValueTree& state);
     void appendMidiMappingsToState(juce::ValueTree& state) const;
     void restoreMidiMappingsFromState(const juce::ValueTree& state);
