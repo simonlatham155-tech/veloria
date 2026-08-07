@@ -208,7 +208,7 @@ int VeloriaAudioProcessor::getNumPrograms()
     return static_cast<int>(factoryPresets.size());
 }
 
-juce::String VeloriaAudioProcessor::getProgramName(int index)
+const juce::String VeloriaAudioProcessor::getProgramName(int index)
 {
     if (juce::isPositiveAndBelow(index, getNumPrograms()))
         return factoryPresets[static_cast<std::size_t>(index)].name;
