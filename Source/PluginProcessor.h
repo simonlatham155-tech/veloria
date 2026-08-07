@@ -59,7 +59,7 @@ public:
     bool renameUserPreset(const juce::String& oldName, const juce::String& newName);
     bool deleteUserPreset(const juce::String& name);
 
-    juce::AudioProcessorValueTreeState parameters;
+    mutable juce::AudioProcessorValueTreeState parameters;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -106,7 +106,7 @@ private:
 
     juce::File getUserPresetDirectory() const;
     juce::File getUserPresetFile(const juce::String& name) const;
-    juce::ValueTree makeSerializableState();
+    juce::ValueTree makeSerializableState() const;
     void restoreSerializableState(const juce::ValueTree& state);
     void appendMidiMappingsToState(juce::ValueTree& state) const;
     void restoreMidiMappingsFromState(const juce::ValueTree& state);
