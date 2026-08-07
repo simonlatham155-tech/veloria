@@ -14,12 +14,19 @@ public:
 
 private:
     VeloriaAudioProcessor& processor;
+
     juce::Slider ampWalk, timeWalk, correlation, curve, level;
-    juce::Label title, subtitle;
+    juce::ComboBox presetBox;
+    juce::ToggleButton monoButton { "MONO" };
+    juce::TextButton discoverButton { "DISCOVER" };
+    juce::Label title, subtitle, midiHint;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+
     std::unique_ptr<SliderAttachment> ampWalkAttachment, timeWalkAttachment,
         correlationAttachment, curveAttachment, levelAttachment;
+    std::unique_ptr<ButtonAttachment> monoAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessorEditor)
 };
