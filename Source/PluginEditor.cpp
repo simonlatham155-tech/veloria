@@ -3,14 +3,14 @@
 
 namespace
 {
-const auto background = juce::Colour::fromRGB(4, 5, 9);
-const auto panel = juce::Colour::fromRGB(10, 12, 18);
-const auto panel2 = juce::Colour::fromRGB(15, 16, 24);
-const auto purple = juce::Colour::fromRGB(181, 83, 255);
-const auto magenta = juce::Colour::fromRGB(255, 76, 191);
-const auto gold = juce::Colour::fromRGB(255, 180, 82);
-const auto orange = juce::Colour::fromRGB(255, 112, 56);
-const auto cyan = juce::Colour::fromRGB(103, 224, 255);
+const auto background = juce::Colour::fromRGB(3, 4, 8);
+const auto panel = juce::Colour::fromRGB(9, 10, 16);
+const auto panel2 = juce::Colour::fromRGB(14, 15, 23);
+const auto purple = juce::Colour::fromRGB(176, 77, 255);
+const auto magenta = juce::Colour::fromRGB(255, 72, 190);
+const auto gold = juce::Colour::fromRGB(255, 184, 86);
+const auto orange = juce::Colour::fromRGB(255, 107, 48);
+const auto cyan = juce::Colour::fromRGB(111, 226, 255);
 }
 
 void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
@@ -19,23 +19,25 @@ void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
     juce::Slider&)
 {
     auto bounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y),
-                                          static_cast<float>(width), static_cast<float>(height)).reduced(9.0f);
+                                          static_cast<float>(width), static_cast<float>(height)).reduced(7.0f);
     const auto size = juce::jmin(bounds.getWidth(), bounds.getHeight());
     auto dial = bounds.withSizeKeepingCentre(size, size);
     const auto centre = dial.getCentre();
     const auto radius = size * 0.43f;
     const auto angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
 
-    juce::ColourGradient outerGlow(purple.withAlpha(0.30f), centre.x, centre.y,
-                                    juce::Colours::transparentBlack, centre.x + radius * 1.28f, centre.y, true);
-    outerGlow.addColour(0.42, magenta.withAlpha(0.20f));
-    outerGlow.addColour(0.72, orange.withAlpha(0.12f));
-    g.setGradientFill(outerGlow);
-    g.fillEllipse(dial.expanded(9.0f));
+    juce::ColourGradient glow(purple.withAlpha(0.30f), centre.x, centre.y,
+                               juce::Colours::transparentBlack, centre.x + radius * 1.35f, centre.y, true);
+    glow.addColour(0.46, magenta.withAlpha(0.20f));
+    glow.addColour(0.78, orange.withAlpha(0.10f));
+    g.setGradientFill(glow);
+    g.fillEllipse(dial.expanded(8.0f));
 
-    g.setColour(juce::Colours::black.withAlpha(0.92f));
+    juce::ColourGradient metal(juce::Colour::fromRGB(33, 34, 43), dial.getX(), dial.getY(),
+                                juce::Colour::fromRGB(6, 7, 11), dial.getRight(), dial.getBottom(), false);
+    g.setGradientFill(metal);
     g.fillEllipse(dial);
-    g.setColour(juce::Colours::white.withAlpha(0.12f));
+    g.setColour(juce::Colours::white.withAlpha(0.10f));
     g.drawEllipse(dial, 1.0f);
 
     const auto arcBounds = dial.reduced(4.0f);
@@ -43,7 +45,7 @@ void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
     baseArc.addCentredArc(centre.x, centre.y, arcBounds.getWidth() * 0.5f, arcBounds.getHeight() * 0.5f,
                          0.0f, rotaryStartAngle, rotaryEndAngle, true);
     g.setColour(juce::Colours::white.withAlpha(0.08f));
-    g.strokePath(baseArc, juce::PathStrokeType(4.0f, juce::PathStrokeType::curved,
+    g.strokePath(baseArc, juce::PathStrokeType(3.0f, juce::PathStrokeType::curved,
                                                juce::PathStrokeType::rounded));
 
     juce::Path valueArc;
@@ -52,23 +54,13 @@ void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
     juce::ColourGradient arcGradient(purple, dial.getX(), centre.y, gold, dial.getRight(), centre.y, false);
     arcGradient.addColour(0.5, magenta);
     g.setGradientFill(arcGradient);
-    g.strokePath(valueArc, juce::PathStrokeType(5.0f, juce::PathStrokeType::curved,
+    g.strokePath(valueArc, juce::PathStrokeType(4.5f, juce::PathStrokeType::curved,
                                                 juce::PathStrokeType::rounded));
 
     juce::Path pointer;
-    pointer.addRoundedRectangle(-1.3f, -radius * 0.72f, 2.6f, radius * 0.43f, 1.2f);
-    g.setColour(juce::Colours::white.withAlpha(0.95f));
+    pointer.addRoundedRectangle(-1.2f, -radius * 0.72f, 2.4f, radius * 0.44f, 1.2f);
+    g.setColour(juce::Colours::white.withAlpha(0.94f));
     g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(centre.x, centre.y));
-
-    for (int i = 0; i < 16; ++i)
-    {
-        const auto a = static_cast<float>(i) / 16.0f * juce::MathConstants<float>::twoPi;
-        const auto rr = radius * (1.04f + 0.11f * std::sin(a * 3.0f + sliderPosProportional * 5.0f));
-        const auto px = centre.x + std::cos(a) * rr;
-        const auto py = centre.y + std::sin(a) * rr;
-        g.setColour((i % 3 == 0 ? gold : purple).withAlpha(0.10f + sliderPosProportional * 0.16f));
-        g.fillEllipse(px - 1.0f, py - 1.0f, 2.0f, 2.0f);
-    }
 }
 
 void VeloriaAudioProcessorEditor::MidiLearnSlider::mouseDown(const juce::MouseEvent& event)
@@ -102,22 +94,22 @@ void VeloriaAudioProcessorEditor::MidiLearnSlider::mouseDown(const juce::MouseEv
 VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    setSize(1500, 940);
+    setSize(1160, 720);
 
     brand.setText("L A T H A M   A U D I O", juce::dontSendNotification);
-    brand.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.78f));
-    brand.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    brand.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.68f));
+    brand.setFont(juce::FontOptions(10.0f, juce::Font::bold));
     addAndMakeVisible(brand);
 
     title.setText("V E L O R I A", juce::dontSendNotification);
     title.setJustificationType(juce::Justification::centred);
-    title.setFont(juce::FontOptions(36.0f, juce::Font::bold));
+    title.setFont(juce::FontOptions(30.0f, juce::Font::bold));
     addAndMakeVisible(title);
 
-    subtitle.setText("FLAGSHIP GENDYN INSTRUMENT  //  ALTERNATE-EARTH STOCHASTIC SYNTHESIS", juce::dontSendNotification);
+    subtitle.setText("STOCHASTIC SYNTHESIZER", juce::dontSendNotification);
     subtitle.setJustificationType(juce::Justification::centred);
-    subtitle.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.42f));
-    subtitle.setFont(juce::FontOptions(10.0f));
+    subtitle.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.35f));
+    subtitle.setFont(juce::FontOptions(9.0f));
     addAndMakeVisible(subtitle);
 
     presetBox.setColour(juce::ComboBox::backgroundColourId, panel2);
@@ -132,7 +124,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
         {
             audioProcessor.setCurrentProgram(id - 1);
             presetNameEditor.setText(presetBox.getText() + " Copy", juce::dontSendNotification);
-            presetStatus.setText("FACTORY PRESET — SAVE AS USER PRESET TO RENAME", juce::dontSendNotification);
+            presetStatus.setText("FACTORY PRESET - SAVE A USER COPY TO RENAME", juce::dontSendNotification);
         }
         else if (id >= firstUserPresetId)
         {
@@ -151,22 +143,27 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     {
         audioProcessor.discover();
         presetBox.setText("Discovered", juce::dontSendNotification);
-        presetNameEditor.setText("", juce::dontSendNotification);
-        presetStatus.setText("DISCOVERED FIELD — NAME IT AND PRESS SAVE", juce::dontSendNotification);
+        presetNameEditor.setText({}, juce::dontSendNotification);
+        presetStatus.setText("DISCOVERED FIELD - NAME IT AND PRESS SAVE", juce::dontSendNotification);
     };
-    discoverButton.setColour(juce::TextButton::buttonColourId, purple.withAlpha(0.30f));
-    discoverButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    addAndMakeVisible(discoverButton);
 
     newFieldButton.onClick = [this]
     {
         audioProcessor.newField();
         presetBox.setText("Field Variation", juce::dontSendNotification);
-        presetStatus.setText("NEW FIELD — SETTINGS KEPT, STOCHASTIC SEED CHANGED", juce::dontSendNotification);
+        presetStatus.setText("NEW FIELD - SAME SETTINGS, NEW STOCHASTIC SEED", juce::dontSendNotification);
     };
-    newFieldButton.setColour(juce::TextButton::buttonColourId, orange.withAlpha(0.24f));
-    newFieldButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    addAndMakeVisible(newFieldButton);
+
+    for (auto* button : { &discoverButton, &newFieldButton, &savePresetButton, &renamePresetButton })
+    {
+        button->setColour(juce::TextButton::buttonColourId, purple.withAlpha(0.24f));
+        button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        addAndMakeVisible(button);
+    }
+    newFieldButton.setColour(juce::TextButton::buttonColourId, orange.withAlpha(0.22f));
+    deletePresetButton.setColour(juce::TextButton::buttonColourId, orange.withAlpha(0.17f));
+    deletePresetButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    addAndMakeVisible(deletePresetButton);
 
     monoButton.setClickingTogglesState(true);
     monoButton.setColour(juce::ToggleButton::textColourId, juce::Colours::white);
@@ -207,19 +204,11 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     levelAttachment = std::make_unique<SliderAttachment>(audioProcessor.parameters, "level", level);
     monoAttachment = std::make_unique<ButtonAttachment>(audioProcessor.parameters, "mono", monoButton);
 
-    presetNameEditor.setTextToShowWhenEmpty("Name discovered preset...", juce::Colours::white.withAlpha(0.28f));
+    presetNameEditor.setTextToShowWhenEmpty("Name preset...", juce::Colours::white.withAlpha(0.28f));
     presetNameEditor.setColour(juce::TextEditor::backgroundColourId, panel2);
     presetNameEditor.setColour(juce::TextEditor::outlineColourId, purple.withAlpha(0.30f));
     presetNameEditor.setColour(juce::TextEditor::textColourId, juce::Colours::white);
     addAndMakeVisible(presetNameEditor);
-
-    for (auto* button : { &savePresetButton, &renamePresetButton, &deletePresetButton })
-    {
-        button->setColour(juce::TextButton::buttonColourId, purple.withAlpha(0.20f));
-        button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-        addAndMakeVisible(button);
-    }
-    deletePresetButton.setColour(juce::TextButton::buttonColourId, orange.withAlpha(0.18f));
 
     savePresetButton.onClick = [this]
     {
@@ -237,7 +226,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     {
         if (! selectedPresetIsUser())
         {
-            presetStatus.setText("FACTORY PRESETS ARE READ-ONLY — PRESS SAVE TO MAKE A USER COPY", juce::dontSendNotification);
+            presetStatus.setText("FACTORY PRESETS ARE READ-ONLY - SAVE A USER COPY FIRST", juce::dontSendNotification);
             return;
         }
 
@@ -249,7 +238,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
             presetStatus.setText("USER PRESET RENAMED", juce::dontSendNotification);
         }
         else
-            presetStatus.setText("RENAME FAILED — NAME MAY ALREADY EXIST", juce::dontSendNotification);
+            presetStatus.setText("RENAME FAILED - NAME MAY ALREADY EXIST", juce::dontSendNotification);
     };
 
     deletePresetButton.onClick = [this]
@@ -270,26 +259,26 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     };
 
     fieldStatus.setJustificationType(juce::Justification::centred);
-    fieldStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.62f));
-    fieldStatus.setFont(juce::FontOptions(10.0f));
+    fieldStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.55f));
+    fieldStatus.setFont(juce::FontOptions(9.0f));
     addAndMakeVisible(fieldStatus);
 
     voiceStatus.setJustificationType(juce::Justification::centredLeft);
-    voiceStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.70f));
-    voiceStatus.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    voiceStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.62f));
+    voiceStatus.setFont(juce::FontOptions(10.0f, juce::Font::bold));
     addAndMakeVisible(voiceStatus);
 
     presetStatus.setJustificationType(juce::Justification::centredLeft);
-    presetStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.45f));
-    presetStatus.setFont(juce::FontOptions(9.0f));
+    presetStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.40f));
+    presetStatus.setFont(juce::FontOptions(8.5f));
     presetStatus.setText("RIGHT-CLICK ANY KNOB FOR MIDI LEARN", juce::dontSendNotification);
     addAndMakeVisible(presetStatus);
 
-    footerStatus.setText("GENDYN CORE  //  12 BREAKPOINTS  //  USER PRESETS  //  RIGHT-CLICK MIDI LEARN",
+    footerStatus.setText("GENDYN CORE  //  12 BREAKPOINTS  //  USER PRESETS  //  MIDI LEARN",
                          juce::dontSendNotification);
     footerStatus.setJustificationType(juce::Justification::centred);
-    footerStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.30f));
-    footerStatus.setFont(juce::FontOptions(9.0f));
+    footerStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.25f));
+    footerStatus.setFont(juce::FontOptions(8.0f));
     addAndMakeVisible(footerStatus);
 
     visualState = audioProcessor.getVisualState();
@@ -308,20 +297,20 @@ void VeloriaAudioProcessorEditor::configureKnob(MidiLearnSlider& slider,
                                                  const juce::String& displayName)
 {
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 76, 18);
-    slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha(0.78f));
+    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 64, 16);
+    slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha(0.70f));
     slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
-    slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::white.withAlpha(0.08f));
+    slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::white.withAlpha(0.06f));
 
     slider.learnCallback = [this, parameterId, displayName]
     {
         audioProcessor.beginMidiLearn(parameterId);
-        presetStatus.setText(displayName + " — MOVE A MIDI CC NOW", juce::dontSendNotification);
+        presetStatus.setText(displayName + " - MOVE A MIDI CC NOW", juce::dontSendNotification);
     };
     slider.clearCallback = [this, parameterId, displayName]
     {
         audioProcessor.clearMidiMapping(parameterId);
-        presetStatus.setText(displayName + " — MIDI MAPPING CLEARED", juce::dontSendNotification);
+        presetStatus.setText(displayName + " - MIDI MAPPING CLEARED", juce::dontSendNotification);
     };
     slider.currentCCCallback = [this, parameterId]
     {
@@ -369,14 +358,14 @@ bool VeloriaAudioProcessorEditor::selectedPresetIsUser() const noexcept
 void VeloriaAudioProcessorEditor::timerCallback()
 {
     visualState = audioProcessor.getVisualState();
-    rotationPhase += 0.0025f + visualState.energy * 0.008f;
+    rotationPhase += 0.0020f + visualState.energy * 0.0065f;
     if (rotationPhase > juce::MathConstants<float>::twoPi)
         rotationPhase -= juce::MathConstants<float>::twoPi;
 
     voiceStatus.setText("VOICE ENGINE   " + juce::String(visualState.activeVoices) + " / 8 ACTIVE",
                         juce::dontSendNotification);
     fieldStatus.setText(juce::String(visualState.activeVoices) + " VOICES  //  "
-                        + juce::String(static_cast<int>(visualState.energy * 100.0f)) + "% FIELD ENERGY",
+                        + juce::String(static_cast<int>(visualState.energy * 100.0f)) + "% ENERGY",
                         juce::dontSendNotification);
     repaint();
 }
@@ -384,39 +373,40 @@ void VeloriaAudioProcessorEditor::timerCallback()
 void VeloriaAudioProcessorEditor::drawPanel(juce::Graphics& g, juce::Rectangle<float> bounds,
                                              const juce::String& panelTitle)
 {
-    g.setColour(panel.withAlpha(0.92f));
-    g.fillRoundedRectangle(bounds, 10.0f);
-    g.setColour(juce::Colours::white.withAlpha(0.08f));
-    g.drawRoundedRectangle(bounds, 10.0f, 1.0f);
-    g.setColour(juce::Colours::white.withAlpha(0.72f));
-    g.setFont(11.0f);
-    g.drawText(panelTitle, bounds.toNearestInt().reduced(14, 8).removeFromTop(18), juce::Justification::centredLeft);
+    g.setColour(panel.withAlpha(0.90f));
+    g.fillRoundedRectangle(bounds, 9.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.07f));
+    g.drawRoundedRectangle(bounds, 9.0f, 1.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.62f));
+    g.setFont(9.5f);
+    g.drawText(panelTitle, bounds.toNearestInt().reduced(10, 7).removeFromTop(15), juce::Justification::centredLeft);
 }
 
 void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(background);
 
-    juce::ColourGradient bgGlow(purple.withAlpha(0.10f), getWidth() * 0.48f, getHeight() * 0.36f,
-                                background, getWidth() * 0.48f, static_cast<float>(getHeight()), true);
+    juce::ColourGradient bgGlow(purple.withAlpha(0.09f), getWidth() * 0.52f, getHeight() * 0.34f,
+                                background, getWidth() * 0.52f, static_cast<float>(getHeight()), true);
+    bgGlow.addColour(0.54, magenta.withAlpha(0.035f));
     g.setGradientFill(bgGlow);
     g.fillRect(getLocalBounds());
 
-    g.setColour(juce::Colours::white.withAlpha(0.07f));
-    g.drawRoundedRectangle(getLocalBounds().reduced(8).toFloat(), 15.0f, 1.0f);
-    g.setColour(purple.withAlpha(0.30f));
-    g.drawLine(18.0f, 74.0f, getWidth() - 18.0f, 74.0f, 1.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.06f));
+    g.drawRoundedRectangle(getLocalBounds().reduced(6).toFloat(), 13.0f, 1.0f);
+    g.setColour(purple.withAlpha(0.28f));
+    g.drawLine(14.0f, 62.0f, getWidth() - 14.0f, 62.0f, 1.0f);
 
-    drawPanel(g, { 18.0f, 94.0f, 230.0f, 565.0f }, "GENDYN FIELD");
-    drawPanel(g, { 1260.0f, 94.0f, 222.0f, 285.0f }, "EVOLUTION");
-    drawPanel(g, { 1260.0f, 392.0f, 222.0f, 267.0f }, "VOICE / STATE");
-    drawPanel(g, { 18.0f, 676.0f, 460.0f, 220.0f }, "AMPLITUDE ENVELOPE");
-    drawPanel(g, { 492.0f, 676.0f, 300.0f, 220.0f }, "FIELD CONTROLS");
-    drawPanel(g, { 806.0f, 676.0f, 440.0f, 220.0f }, "USER PRESETS / TELEMETRY");
-    drawPanel(g, { 1260.0f, 676.0f, 222.0f, 220.0f }, "OUTPUT");
+    drawPanel(g, { 14.0f, 74.0f, 190.0f, 438.0f }, "GENDYN FIELD");
+    drawPanel(g, { 214.0f, 74.0f, 700.0f, 438.0f }, "STOCHASTIC FIELD VIEW");
+    drawPanel(g, { 924.0f, 74.0f, 222.0f, 212.0f }, "EVOLUTION");
+    drawPanel(g, { 924.0f, 296.0f, 222.0f, 216.0f }, "VOICE / STATE");
+    drawPanel(g, { 14.0f, 522.0f, 430.0f, 164.0f }, "AMPLITUDE ENVELOPE");
+    drawPanel(g, { 454.0f, 522.0f, 468.0f, 164.0f }, "PRESETS / FIELD");
+    drawPanel(g, { 932.0f, 522.0f, 214.0f, 164.0f }, "OUTPUT");
 
-    drawStochasticGlobe(g, { 270.0f, 102.0f, 970.0f, 555.0f });
-    drawEvolutionGraph(g, { 1277.0f, 132.0f, 187.0f, 190.0f });
+    drawStochasticGlobe(g, { 226.0f, 88.0f, 676.0f, 410.0f });
+    drawEvolutionGraph(g, { 941.0f, 111.0f, 188.0f, 128.0f });
 
     drawKnobLabel(g, ampWalk, "AMP WALK");
     drawKnobLabel(g, timeWalk, "TIME WALK");
@@ -429,87 +419,95 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     drawKnobLabel(g, seed, "FIELD SEED");
     drawKnobLabel(g, level, "LEVEL");
 
-    g.setColour(juce::Colours::white.withAlpha(0.36f));
-    g.setFont(10.0f);
-    g.drawText("LIVE 12-NODE STOCHASTIC AURORA", 530, 625, 450, 18, juce::Justification::centred);
+    g.setColour(juce::Colours::white.withAlpha(0.28f));
+    g.setFont(8.5f);
+    g.drawText("LIVE GENDYN AURORA - 12 STOCHASTIC BREAKPOINTS", 370, 484, 380, 16,
+               juce::Justification::centred);
 
-    g.setColour(cyan.withAlpha(0.65f));
-    g.drawText("POLY 8", 1280, 446, 78, 18, juce::Justification::centredLeft);
-    g.setColour(juce::Colours::white.withAlpha(0.48f));
-    g.drawText("Independent GENDYN state per voice", 1280, 478, 175, 35, juce::Justification::centredLeft, true);
-    g.drawText("DISCOVER changes the bounded field", 1280, 526, 175, 34, juce::Justification::centredLeft, true);
-    g.drawText("NEW FIELD keeps settings and changes seed", 1280, 566, 175, 42, juce::Justification::centredLeft, true);
-
-    g.setColour(juce::Colours::white.withAlpha(0.42f));
-    g.drawText("Aurora follows live breakpoint amplitude and timing.", 825, 720, 395, 20,
-               juce::Justification::centredLeft);
-    g.drawText("Name a sound below, then SAVE it permanently.", 825, 747, 395, 20,
-               juce::Justification::centredLeft);
-    g.drawText("Right-click any knob for internal MIDI Learn.", 825, 774, 395, 20,
-               juce::Justification::centredLeft);
+    g.setColour(cyan.withAlpha(0.58f));
+    g.drawText("POLY 8", 944, 347, 70, 16, juce::Justification::centredLeft);
+    g.setColour(juce::Colours::white.withAlpha(0.40f));
+    g.drawText("Independent stochastic state per voice", 944, 372, 180, 32,
+               juce::Justification::centredLeft, true);
+    g.drawText("DISCOVER reshapes the field. NEW FIELD keeps the patch and changes only the seed.",
+               944, 418, 180, 57, juce::Justification::centredLeft, true);
 }
 
 void VeloriaAudioProcessorEditor::drawKnobLabel(juce::Graphics& g, juce::Slider& slider,
                                                  const juce::String& text)
 {
-    auto labelBounds = slider.getBounds().translated(0, -21);
-    g.setColour(juce::Colours::white.withAlpha(0.78f));
-    g.setFont(10.0f);
+    auto labelBounds = slider.getBounds().translated(0, -15);
+    g.setColour(juce::Colours::white.withAlpha(0.68f));
+    g.setFont(8.5f);
     g.drawFittedText(text, labelBounds, juce::Justification::centred, 1);
 }
 
 void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g, juce::Rectangle<float> bounds)
 {
-    g.setColour(juce::Colours::white.withAlpha(0.05f));
-    for (int i = 1; i < 5; ++i)
-    {
-        const auto x = bounds.getX() + bounds.getWidth() * static_cast<float>(i) / 5.0f;
-        g.drawVerticalLine(static_cast<int>(x), bounds.getY(), bounds.getBottom());
-    }
-
     juce::Path path;
     for (std::size_t i = 0; i < visualState.amplitudes.size(); ++i)
     {
         const auto x = bounds.getX() + bounds.getWidth() * static_cast<float>(i)
                                      / static_cast<float>(visualState.amplitudes.size() - 1);
-        const auto y = bounds.getCentreY() - visualState.amplitudes[i] * bounds.getHeight() * 0.36f;
+        const auto y = bounds.getCentreY() - visualState.amplitudes[i] * bounds.getHeight() * 0.34f;
         if (i == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
     }
 
-    g.setColour(purple.withAlpha(0.20f));
-    g.strokePath(path, juce::PathStrokeType(8.0f));
-    g.setColour(purple);
-    g.strokePath(path, juce::PathStrokeType(2.0f));
+    g.setColour(purple.withAlpha(0.18f));
+    g.strokePath(path, juce::PathStrokeType(7.0f, juce::PathStrokeType::curved));
+    juce::ColourGradient graphGradient(purple, bounds.getX(), bounds.getCentreY(),
+                                        gold, bounds.getRight(), bounds.getCentreY(), false);
+    graphGradient.addColour(0.55, magenta);
+    g.setGradientFill(graphGradient);
+    g.strokePath(path, juce::PathStrokeType(1.8f, juce::PathStrokeType::curved));
 
     for (std::size_t i = 0; i < visualState.amplitudes.size(); ++i)
     {
         const auto x = bounds.getX() + bounds.getWidth() * static_cast<float>(i)
                                      / static_cast<float>(visualState.amplitudes.size() - 1);
-        const auto y = bounds.getCentreY() - visualState.amplitudes[i] * bounds.getHeight() * 0.36f;
+        const auto y = bounds.getCentreY() - visualState.amplitudes[i] * bounds.getHeight() * 0.34f;
         g.setColour(i % 3 == 0 ? gold : cyan);
-        g.fillEllipse(x - 2.4f, y - 2.4f, 4.8f, 4.8f);
+        g.fillEllipse(x - 2.2f, y - 2.2f, 4.4f, 4.4f);
     }
 }
 
 void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::Rectangle<float> bounds)
 {
-    auto globe = bounds.withSizeKeepingCentre(535.0f, 535.0f);
+    auto globe = bounds.withSizeKeepingCentre(410.0f, 410.0f);
     const auto centre = globe.getCentre();
-    const auto radius = globe.getWidth() * 0.43f;
+    const auto radius = globe.getWidth() * 0.46f;
     const auto energy = juce::jlimit(0.0f, 1.0f, visualState.energy);
 
-    juce::ColourGradient glow(purple.withAlpha(0.10f + energy * 0.22f), centre.x, centre.y,
-                              juce::Colours::transparentBlack, centre.x, centre.y + radius, true);
-    glow.addColour(0.36, magenta.withAlpha(0.08f + energy * 0.14f));
-    glow.addColour(0.68, orange.withAlpha(0.04f + energy * 0.08f));
-    g.setGradientFill(glow);
-    g.fillEllipse(globe.reduced(8.0f));
+    juce::ColourGradient halo(purple.withAlpha(0.20f + energy * 0.20f), centre.x, centre.y,
+                               juce::Colours::transparentBlack, centre.x, centre.y + radius * 1.22f, true);
+    halo.addColour(0.40, magenta.withAlpha(0.13f + energy * 0.12f));
+    halo.addColour(0.70, orange.withAlpha(0.06f + energy * 0.08f));
+    g.setGradientFill(halo);
+    g.fillEllipse(globe.expanded(18.0f));
 
-    for (int ring = 1; ring <= 5; ++ring)
+    // Deep spherical body: no radar rings, just haze and depth.
+    juce::ColourGradient body(juce::Colour::fromRGB(28, 13, 48).withAlpha(0.78f),
+                               centre.x - radius * 0.35f, centre.y - radius * 0.45f,
+                               juce::Colour::fromRGB(2, 3, 8).withAlpha(0.96f),
+                               centre.x + radius * 0.78f, centre.y + radius * 0.82f, true);
+    body.addColour(0.48, juce::Colour::fromRGB(70, 17, 89).withAlpha(0.35f + energy * 0.15f));
+    g.setGradientFill(body);
+    g.fillEllipse(globe);
+
+    // Deterministic volumetric particles inside the sphere.
+    for (int i = 0; i < 260; ++i)
     {
-        const auto r = radius * static_cast<float>(ring) / 5.0f;
-        g.setColour((ring % 2 == 0 ? gold : purple).withAlpha(0.05f + energy * 0.025f));
-        g.drawEllipse(centre.x - r, centre.y - r, r * 2.0f, r * 2.0f, 1.0f);
+        const auto fi = static_cast<float>(i);
+        const auto phase = fi * 2.39996323f + rotationPhase * (0.20f + static_cast<float>(i % 9) * 0.025f);
+        const auto radialNorm = std::sqrt(static_cast<float>((i * 53) % 257) / 257.0f);
+        const auto r = radius * radialNorm * 0.94f;
+        const auto squash = 0.72f + 0.24f * std::sin(fi * 0.37f + rotationPhase * 0.8f);
+        const auto x = centre.x + std::cos(phase) * r;
+        const auto y = centre.y + std::sin(phase) * r * squash;
+        const auto sz = 0.55f + static_cast<float>(i % 4) * 0.28f + energy * 0.9f;
+        const auto c = (i % 7 == 0 ? gold : (i % 3 == 0 ? magenta : purple));
+        g.setColour(c.withAlpha(0.035f + energy * 0.12f));
+        g.fillEllipse(x - sz * 0.5f, y - sz * 0.5f, sz, sz);
     }
 
     float totalDuration = 0.0f;
@@ -527,119 +525,133 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
         cumulative += duration;
 
         const auto amplitude = juce::jlimit(-1.0f, 1.0f, visualState.amplitudes[i]);
-        const auto radial = radius * (0.61f + amplitude * 0.30f);
-        const auto depth = 0.76f + 0.24f * std::sin(angle * 2.0f + rotationPhase * 0.5f);
+        const auto radial = radius * (0.52f + amplitude * 0.29f);
+        const auto depth = 0.72f + 0.28f * std::sin(angle * 2.0f + rotationPhase * 0.55f);
         points[i] = { centre.x + std::cos(angle) * radial,
                       centre.y + std::sin(angle) * radial * depth };
     }
 
-    for (int ribbon = 0; ribbon < 9; ++ribbon)
+    // Broad northern-lights ribbons flow through the real breakpoint path.
+    for (int ribbon = 0; ribbon < 14; ++ribbon)
     {
         juce::Path aurora;
-        const auto phaseOffset = ribbon * 0.23f;
+        const auto ribbonOffset = static_cast<float>(ribbon - 7);
+
         for (std::size_t segment = 0; segment < points.size(); ++segment)
         {
             const auto next = (segment + 1) % points.size();
             const auto p0 = points[segment];
             const auto p1 = points[next];
-            for (int s = 0; s <= 14; ++s)
+
+            for (int s = 0; s <= 18; ++s)
             {
-                const auto t = static_cast<float>(s) / 14.0f;
+                const auto t = static_cast<float>(s) / 18.0f;
                 auto p = p0 + (p1 - p0) * t;
-                const auto flutter = std::sin(t * juce::MathConstants<float>::pi
-                                            + phaseOffset + rotationPhase * (0.7f + ribbon * 0.05f));
                 const auto tangent = p1 - p0;
                 auto normal = juce::Point<float>(-tangent.y, tangent.x);
-                const auto length = juce::jmax(1.0f, normal.getDistanceFromOrigin());
-                normal /= length;
-                p += normal * flutter * (5.0f + ribbon * 1.3f) * (0.45f + energy);
-                if (segment == 0 && s == 0) aurora.startNewSubPath(p); else aurora.lineTo(p);
+                const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
+                normal /= len;
+
+                const auto wave = std::sin(t * juce::MathConstants<float>::pi
+                                         + static_cast<float>(segment) * 0.55f
+                                         + rotationPhase * (0.65f + ribbon * 0.025f));
+                p += normal * (ribbonOffset * 1.8f + wave * (4.0f + energy * 10.0f));
+
+                if (segment == 0 && s == 0) aurora.startNewSubPath(p);
+                else aurora.lineTo(p);
             }
         }
         aurora.closeSubPath();
 
-        const auto baseColour = ribbon % 3 == 0 ? gold : (ribbon % 3 == 1 ? magenta : purple);
-        g.setColour(baseColour.withAlpha(0.025f + energy * 0.035f));
-        g.strokePath(aurora, juce::PathStrokeType(14.0f - ribbon * 0.6f,
+        const auto c = ribbon % 4 == 0 ? gold : (ribbon % 3 == 0 ? magenta : purple);
+        g.setColour(c.withAlpha(0.018f + energy * 0.025f));
+        g.strokePath(aurora, juce::PathStrokeType(12.0f - ribbon * 0.22f,
                                                   juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
-        g.setColour(baseColour.withAlpha(0.10f + energy * 0.09f));
-        g.strokePath(aurora, juce::PathStrokeType(2.3f,
+        g.setColour(c.withAlpha(0.055f + energy * 0.080f));
+        g.strokePath(aurora, juce::PathStrokeType(1.6f,
                                                   juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
     }
 
+    // Moving particles along the actual stochastic interpolation.
     for (std::size_t segment = 0; segment < points.size(); ++segment)
     {
         const auto next = (segment + 1) % points.size();
         const auto p0 = points[segment];
         const auto p1 = points[next];
-        for (int j = 0; j < 18; ++j)
+        for (int j = 0; j < 22; ++j)
         {
-            const auto t = std::fmod((static_cast<float>(j) / 18.0f)
-                                   + rotationPhase * (0.025f + 0.004f * static_cast<float>(segment)), 1.0f);
+            const auto t = std::fmod(static_cast<float>(j) / 22.0f
+                                   + rotationPhase * (0.022f + 0.0025f * static_cast<float>(segment)), 1.0f);
             auto p = p0 + (p1 - p0) * t;
             const auto tangent = p1 - p0;
             auto normal = juce::Point<float>(-tangent.y, tangent.x);
-            const auto length = juce::jmax(1.0f, normal.getDistanceFromOrigin());
-            normal /= length;
-            const auto wobble = std::sin((t * 8.0f + segment) * 1.7f + rotationPhase * 3.0f);
-            p += normal * wobble * (3.0f + energy * 10.0f);
-            const auto particleColour = ((j + static_cast<int>(segment)) % 4 == 0 ? gold : purple)
-                                      .interpolatedWith(magenta, 0.35f);
-            g.setColour(particleColour.withAlpha(0.10f + energy * 0.30f));
-            const auto sz = 0.8f + energy * 1.7f + static_cast<float>(j % 3) * 0.35f;
+            const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
+            normal /= len;
+            const auto wobble = std::sin(t * 11.0f + static_cast<float>(segment) + rotationPhase * 2.8f);
+            p += normal * wobble * (2.5f + energy * 8.0f);
+
+            const auto c = ((j + static_cast<int>(segment)) % 5 == 0 ? gold : purple)
+                               .interpolatedWith(magenta, 0.40f);
+            const auto sz = 0.8f + energy * 1.2f + static_cast<float>(j % 3) * 0.26f;
+            g.setColour(c.withAlpha(0.08f + energy * 0.27f));
             g.fillEllipse(p.x - sz * 0.5f, p.y - sz * 0.5f, sz, sz);
         }
     }
 
+    // Breakpoint nodes stay visible, but secondary to the aurora field.
     for (std::size_t i = 0; i < points.size(); ++i)
     {
-        const auto amplitude = std::abs(visualState.amplitudes[i]);
-        const auto nodeRadius = 4.0f + amplitude * 5.0f + energy * 2.0f;
-        const auto nodeColour = (i % 3 == 0 ? gold : purple).interpolatedWith(magenta, amplitude * 0.30f);
-        g.setColour(nodeColour.withAlpha(0.15f));
-        g.fillEllipse(points[i].x - nodeRadius * 2.7f, points[i].y - nodeRadius * 2.7f,
-                      nodeRadius * 5.4f, nodeRadius * 5.4f);
-        g.setColour(nodeColour);
+        const auto amp = std::abs(visualState.amplitudes[i]);
+        const auto nodeRadius = 3.0f + amp * 3.4f + energy * 1.2f;
+        const auto c = (i % 3 == 0 ? gold : purple).interpolatedWith(magenta, amp * 0.35f);
+        g.setColour(c.withAlpha(0.12f));
+        g.fillEllipse(points[i].x - nodeRadius * 2.4f, points[i].y - nodeRadius * 2.4f,
+                      nodeRadius * 4.8f, nodeRadius * 4.8f);
+        g.setColour(c.withAlpha(0.88f));
         g.fillEllipse(points[i].x - nodeRadius, points[i].y - nodeRadius,
                       nodeRadius * 2.0f, nodeRadius * 2.0f);
-        g.setColour(juce::Colours::white.withAlpha(0.90f));
-        g.fillEllipse(points[i].x - 1.6f, points[i].y - 1.6f, 3.2f, 3.2f);
+        g.setColour(juce::Colours::white.withAlpha(0.82f));
+        g.fillEllipse(points[i].x - 1.1f, points[i].y - 1.1f, 2.2f, 2.2f);
     }
+
+    g.setColour(juce::Colours::white.withAlpha(0.07f));
+    g.drawEllipse(globe, 1.0f);
 }
 
 void VeloriaAudioProcessorEditor::resized()
 {
-    brand.setBounds(34, 20, 250, 30);
-    title.setBounds(490, 10, 520, 45);
-    subtitle.setBounds(475, 50, 550, 16);
+    brand.setBounds(22, 14, 190, 24);
+    title.setBounds(410, 8, 340, 34);
+    subtitle.setBounds(435, 40, 290, 13);
 
-    presetBox.setBounds(1020, 20, 220, 34);
-    discoverButton.setBounds(1250, 20, 92, 34);
-    newFieldButton.setBounds(1350, 20, 92, 34);
-    monoButton.setBounds(1445, 20, 48, 34);
+    presetBox.setBounds(752, 15, 178, 30);
+    discoverButton.setBounds(938, 15, 72, 30);
+    newFieldButton.setBounds(1017, 15, 78, 30);
+    monoButton.setBounds(1100, 15, 52, 30);
 
-    ampWalk.setBounds(60, 160, 145, 135);
-    timeWalk.setBounds(60, 338, 145, 135);
-    ampMirror.setBounds(60, 516, 145, 125);
-    timeMirror.setBounds(1268, 420, 145, 125);
+    ampWalk.setBounds(47, 120, 120, 103);
+    timeWalk.setBounds(47, 231, 120, 103);
+    ampMirror.setBounds(47, 342, 120, 103);
+    timeMirror.setBounds(47, 453, 120, 48);
 
-    attack.setBounds(48, 736, 96, 125);
-    decay.setBounds(151, 736, 96, 125);
-    sustain.setBounds(254, 736, 96, 125);
-    release.setBounds(357, 736, 96, 125);
+    attack.setBounds(32, 568, 91, 95);
+    decay.setBounds(132, 568, 91, 95);
+    sustain.setBounds(232, 568, 91, 95);
+    release.setBounds(332, 568, 91, 95);
 
-    seed.setBounds(530, 736, 105, 125);
-    fieldStatus.setBounds(645, 754, 120, 55);
-    voiceStatus.setBounds(1280, 412, 170, 24);
-    level.setBounds(1303, 735, 135, 135);
+    seed.setBounds(474, 560, 92, 99);
+    fieldStatus.setBounds(566, 578, 118, 35);
 
-    presetNameEditor.setBounds(825, 812, 180, 30);
-    savePresetButton.setBounds(1013, 812, 62, 30);
-    renamePresetButton.setBounds(1082, 812, 72, 30);
-    deletePresetButton.setBounds(1161, 812, 66, 30);
-    presetStatus.setBounds(825, 848, 402, 25);
+    presetNameEditor.setBounds(690, 548, 210, 27);
+    savePresetButton.setBounds(690, 582, 62, 27);
+    renamePresetButton.setBounds(758, 582, 68, 27);
+    deletePresetButton.setBounds(832, 582, 68, 27);
+    presetStatus.setBounds(690, 616, 210, 39);
 
-    footerStatus.setBounds(430, 908, 650, 18);
+    voiceStatus.setBounds(944, 315, 175, 22);
+    level.setBounds(970, 557, 138, 108);
+
+    footerStatus.setBounds(360, 694, 440, 14);
 }
