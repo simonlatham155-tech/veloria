@@ -23,10 +23,19 @@ float parameterValue(juce::AudioProcessorValueTreeState& state, const char* id)
 void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
     juce::Graphics& g, int x, int y, int width, int height,
     float sliderPosProportional, float rotaryStartAngle, float rotaryEndAngle,
-    juce::Slider&)
+    juce::Slider& slider)
 {
     auto bounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y),
-                                          static_cast<float>(width), static_cast<float>(height)).reduced(7.0f);
+                                          static_cast<float>(width), static_cast<float>(height));
+
+    // The control name is painted inside the slider component so it can never be
+    // obscured by the child component paint order.
+    auto labelBounds = bounds.removeFromTop(18.0f).toNearestInt();
+    g.setColour(juce::Colours::white.withAlpha(0.72f));
+    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.drawFittedText(slider.getName(), labelBounds, juce::Justification::centred, 1);
+
+    bounds = bounds.reduced(7.0f, 2.0f);
     const auto size = juce::jmin(bounds.getWidth(), bounds.getHeight());
     auto dial = bounds.withSizeKeepingCentre(size, size);
     const auto centre = dial.getCentre();
@@ -103,20 +112,20 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 {
     setSize(1400, 900);
 
-    brand.setText("L A T H A M   A U D I O", juce::dontSendNotification);
-    brand.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.68f));
-    brand.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+    // LathamAudio is drawn directly in paint so Latham can remain light and Audio bold.
+    brand.setText({}, juce::dontSendNotification);
     addAndMakeVisible(brand);
 
     title.setText("V E L O R I A", juce::dontSendNotification);
     title.setJustificationType(juce::Justification::centred);
-    title.setFont(juce::FontOptions(30.0f, juce::Font::bold));
+    title.setFont(juce::FontOptions(29.0f));
+    title.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.90f));
     addAndMakeVisible(title);
 
     subtitle.setText("DYNAMIC STOCHASTIC SYNTHESIS", juce::dontSendNotification);
     subtitle.setJustificationType(juce::Justification::centred);
-    subtitle.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.35f));
-    subtitle.setFont(juce::FontOptions(9.0f));
+    subtitle.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.25f));
+    subtitle.setFont(juce::FontOptions(7.8f));
     addAndMakeVisible(subtitle);
 
     presetBox.setColour(juce::ComboBox::backgroundColourId, panel2);
@@ -177,8 +186,8 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 
     configureKnob(ampWalk, "ampWalk", "AMP WALK");
     configureKnob(timeWalk, "timeWalk", "TIME WALK");
-    configureKnob(ampMirror, "ampMirror", "AMP MIRROR");
-    configureKnob(timeMirror, "timeMirror", "TIME MIRROR");
+    configureKnob(ampMirror, "ampMirror", "AMP BARRIER");
+    configureKnob(timeMirror, "timeMirror", "TIME BARRIER");
     configureKnob(attack, "attack", "ATTACK");
     configureKnob(decay, "decay", "DECAY");
     configureKnob(sustain, "sustain", "SUSTAIN");
@@ -193,9 +202,18 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
         addAndMakeVisible(slider);
     }
 
+    ampWalk.setNumDecimalPlacesToDisplay(3);
+    timeWalk.setNumDecimalPlacesToDisplay(3);
+    ampMirror.setNumDecimalPlacesToDisplay(3);
+    timeMirror.setNumDecimalPlacesToDisplay(3);
+    attack.setNumDecimalPlacesToDisplay(3);
+    decay.setNumDecimalPlacesToDisplay(3);
+    sustain.setNumDecimalPlacesToDisplay(2);
+    release.setNumDecimalPlacesToDisplay(3);
     seed.setTextValueSuffix(" seed");
     seed.setNumDecimalPlacesToDisplay(0);
     level.setTextValueSuffix(" dB");
+    level.setNumDecimalPlacesToDisplay(1);
 
     ampWalkAttachment = std::make_unique<SliderAttachment>(audioProcessor.parameters, "ampWalk", ampWalk);
     timeWalkAttachment = std::make_unique<SliderAttachment>(audioProcessor.parameters, "timeWalk", timeWalk);
@@ -290,11 +308,12 @@ void VeloriaAudioProcessorEditor::configureKnob(MidiLearnSlider& slider,
                                                  const juce::String& parameterId,
                                                  const juce::String& displayName)
 {
+    slider.setName(displayName);
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 64, 16);
-    slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha(0.70f));
+    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 74, 16);
+    slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha(0.78f));
     slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
-    slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::white.withAlpha(0.06f));
+    slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::white.withAlpha(0.05f));
     slider.learnCallback = [this, parameterId, displayName]
     {
         audioProcessor.beginMidiLearn(parameterId);
@@ -344,7 +363,7 @@ bool VeloriaAudioProcessorEditor::selectedPresetIsUser() const noexcept
 void VeloriaAudioProcessorEditor::timerCallback()
 {
     visualState = audioProcessor.getVisualState();
-    rotationPhase += 0.0016f + visualState.energy * 0.0080f;
+    rotationPhase += 0.0022f + visualState.energy * 0.0095f;
     if (rotationPhase > juce::MathConstants<float>::twoPi)
         rotationPhase -= juce::MathConstants<float>::twoPi;
     voiceStatus.setText("VOICE ENGINE   " + juce::String(visualState.activeVoices) + " / 8 ACTIVE",
@@ -380,6 +399,18 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(purple.withAlpha(0.28f));
     g.drawLine(14.0f, 62.0f, getWidth() - 14.0f, 62.0f, 1.0f);
 
+    // Established LathamAudio mark: one word, weight change rather than spacing.
+    const juce::Font brandLight(juce::FontOptions(18.0f));
+    const juce::Font brandBold(juce::FontOptions(18.0f, juce::Font::bold));
+    const juce::String lhs("Latham");
+    const juce::String rhs("Audio");
+    const auto lhsWidth = brandLight.getStringWidthFloat(lhs);
+    g.setColour(juce::Colours::white.withAlpha(0.78f));
+    g.setFont(brandLight);
+    g.drawText(lhs, 22, 14, static_cast<int>(std::ceil(lhsWidth)) + 2, 26, juce::Justification::centredLeft);
+    g.setFont(brandBold);
+    g.drawText(rhs, 22 + static_cast<int>(std::ceil(lhsWidth)), 14, 80, 26, juce::Justification::centredLeft);
+
     drawPanel(g, { 14.0f, 74.0f, 212.0f, 556.0f }, "STOCHASTIC FIELD");
     drawPanel(g, { 236.0f, 74.0f, 892.0f, 556.0f }, "LIVING PLANET / LIVE MATHEMATICAL STATE");
     drawPanel(g, { 1138.0f, 74.0f, 248.0f, 268.0f }, "EVOLUTION / STRUCTURE");
@@ -390,17 +421,6 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
 
     drawStochasticGlobe(g, { 252.0f, 92.0f, 860.0f, 520.0f });
     drawEvolutionGraph(g, { 1156.0f, 116.0f, 212.0f, 142.0f });
-
-    drawKnobLabel(g, ampWalk, "AMP WALK");
-    drawKnobLabel(g, timeWalk, "TIME WALK");
-    drawKnobLabel(g, ampMirror, "AMP BARRIER");
-    drawKnobLabel(g, timeMirror, "TIME BARRIER");
-    drawKnobLabel(g, attack, "ATTACK");
-    drawKnobLabel(g, decay, "DECAY");
-    drawKnobLabel(g, sustain, "SUSTAIN");
-    drawKnobLabel(g, release, "RELEASE");
-    drawKnobLabel(g, seed, "FIELD SEED");
-    drawKnobLabel(g, level, "LEVEL");
 
     const auto aw = parameterValue(audioProcessor.parameters, "ampWalk");
     const auto tw = parameterValue(audioProcessor.parameters, "timeWalk");
@@ -434,13 +454,9 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
                juce::Justification::centred);
 }
 
-void VeloriaAudioProcessorEditor::drawKnobLabel(juce::Graphics& g, juce::Slider& slider,
-                                                 const juce::String& text)
+void VeloriaAudioProcessorEditor::drawKnobLabel(juce::Graphics&, juce::Slider&, const juce::String&)
 {
-    auto labelBounds = slider.getBounds().translated(0, -15);
-    g.setColour(juce::Colours::white.withAlpha(0.68f));
-    g.setFont(8.5f);
-    g.drawFittedText(text, labelBounds, juce::Justification::centred, 1);
+    // Labels now live inside each slider component via AuroraLookAndFeel.
 }
 
 void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g, juce::Rectangle<float> bounds)
@@ -482,18 +498,19 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
     const auto centre = globe.getCentre();
     const auto radius = globe.getWidth() * 0.455f;
 
-    // Orbital telemetry cage: each ring represents a live mathematical dimension.
-    for (int ring = 0; ring < 7; ++ring)
+    // More visible orbital mathematics than the previous build. These are calm
+    // when the field is constrained and become busier with walk/energy.
+    for (int ring = 0; ring < 11; ++ring)
     {
-        const auto rr = radius * (1.01f + 0.045f * static_cast<float>(ring));
-        juce::Rectangle<float> orbit(centre.x - rr, centre.y - rr * (0.72f + ring * 0.025f), rr * 2.0f, rr * (1.44f + ring * 0.05f));
-        const auto phase = rotationPhase * (ring % 2 == 0 ? 1.0f : -0.7f) + ring * 0.61f;
+        const auto rr = radius * (0.98f + 0.035f * static_cast<float>(ring));
+        juce::Rectangle<float> orbit(centre.x - rr, centre.y - rr * (0.68f + ring * 0.018f), rr * 2.0f, rr * (1.36f + ring * 0.036f));
+        const auto phase = rotationPhase * (ring % 2 == 0 ? 1.0f : -0.72f) + ring * 0.47f;
         juce::Path arc;
         arc.addCentredArc(centre.x, centre.y, orbit.getWidth() * 0.5f, orbit.getHeight() * 0.5f,
-                          phase, 0.15f, juce::MathConstants<float>::twoPi - 0.15f, true);
-        const auto c = ring % 3 == 0 ? gold : (ring % 2 == 0 ? purple : cyan);
-        g.setColour(c.withAlpha(0.08f + energy * 0.045f));
-        g.strokePath(arc, juce::PathStrokeType(0.8f + ring * 0.07f));
+                          phase, 0.08f, juce::MathConstants<float>::twoPi - 0.08f, true);
+        const auto c = ring % 4 == 0 ? gold : (ring % 3 == 0 ? cyan : purple);
+        g.setColour(c.withAlpha(0.055f + motion * 0.035f + energy * 0.055f));
+        g.strokePath(arc, juce::PathStrokeType(0.65f + ring * 0.045f));
     }
 
     juce::ColourGradient halo(purple.withAlpha(0.24f + energy * 0.24f), centre.x, centre.y,
@@ -503,49 +520,49 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
     g.setGradientFill(halo);
     g.fillEllipse(globe.expanded(24.0f));
 
-    juce::ColourGradient body(juce::Colour::fromRGB(31, 13, 53).withAlpha(0.93f),
+    juce::ColourGradient body(juce::Colour::fromRGB(31, 13, 53).withAlpha(0.90f),
                                centre.x - radius * 0.38f, centre.y - radius * 0.48f,
-                               juce::Colour::fromRGB(1, 2, 7).withAlpha(0.99f),
+                               juce::Colour::fromRGB(1, 2, 7).withAlpha(0.98f),
                                centre.x + radius * 0.80f, centre.y + radius * 0.84f, true);
-    body.addColour(0.38, juce::Colour::fromRGB(65, 18, 93).withAlpha(0.50f));
-    body.addColour(0.62, juce::Colour::fromRGB(26, 20, 82).withAlpha(0.36f));
+    body.addColour(0.38, juce::Colour::fromRGB(65, 18, 93).withAlpha(0.48f));
+    body.addColour(0.62, juce::Colour::fromRGB(26, 20, 82).withAlpha(0.32f));
     g.setGradientFill(body);
     g.fillEllipse(globe);
 
-    // Planet latitude / longitude mesh breathes with time-domain motion.
-    for (int lat = -5; lat <= 5; ++lat)
+    for (int lat = -6; lat <= 6; ++lat)
     {
-        const auto yOffset = static_cast<float>(lat) / 6.0f;
+        const auto yOffset = static_cast<float>(lat) / 7.0f;
         const auto widthFactor = std::sqrt(juce::jmax(0.0f, 1.0f - yOffset * yOffset));
-        const auto wobble = 1.0f + 0.025f * motion * std::sin(rotationPhase * 2.0f + lat);
+        const auto wobble = 1.0f + 0.032f * motion * std::sin(rotationPhase * 2.2f + lat);
         juce::Rectangle<float> r(centre.x - radius * widthFactor * wobble,
-                                 centre.y + yOffset * radius * 0.86f - radius * 0.055f,
-                                 radius * 2.0f * widthFactor * wobble, radius * 0.11f);
-        g.setColour((lat % 2 == 0 ? purple : cyan).withAlpha(0.035f + motion * 0.035f));
-        g.drawEllipse(r, 0.65f);
+                                 centre.y + yOffset * radius * 0.86f - radius * 0.05f,
+                                 radius * 2.0f * widthFactor * wobble, radius * 0.10f);
+        g.setColour((lat % 2 == 0 ? purple : cyan).withAlpha(0.028f + motion * 0.050f));
+        g.drawEllipse(r, 0.60f);
     }
-    for (int lon = 0; lon < 9; ++lon)
+    for (int lon = 0; lon < 13; ++lon)
     {
-        const auto a = static_cast<float>(lon) / 9.0f * juce::MathConstants<float>::pi + rotationPhase * 0.16f;
+        const auto a = static_cast<float>(lon) / 13.0f * juce::MathConstants<float>::pi + rotationPhase * 0.18f;
         const auto w = juce::jmax(10.0f, std::abs(std::cos(a)) * radius * 2.0f);
         juce::Rectangle<float> r(centre.x - w * 0.5f, centre.y - radius, w, radius * 2.0f);
-        g.setColour((lon % 3 == 0 ? gold : purple).withAlpha(0.025f + memory * 0.025f));
-        g.drawEllipse(r, 0.55f);
+        g.setColour((lon % 4 == 0 ? gold : purple).withAlpha(0.020f + memory * 0.030f));
+        g.drawEllipse(r, 0.50f);
     }
 
-    // Dense deterministic star field / stochastic atmosphere.
-    for (int i = 0; i < 620; ++i)
+    // Dense atmosphere. Deterministic placement keeps this a visualisation, not
+    // an unrelated random particle effect.
+    for (int i = 0; i < 980; ++i)
     {
         const auto fi = static_cast<float>(i);
-        const auto phase = fi * 2.39996323f + rotationPhase * (0.15f + static_cast<float>(i % 11) * 0.018f);
-        const auto radialNorm = std::sqrt(static_cast<float>((i * 67) % 619) / 619.0f);
-        const auto r = radius * radialNorm * 0.98f;
-        const auto depth = 0.68f + 0.28f * std::sin(fi * 0.31f + rotationPhase * (0.7f + motion));
+        const auto phase = fi * 2.39996323f + rotationPhase * (0.15f + static_cast<float>(i % 13) * 0.018f);
+        const auto radialNorm = std::sqrt(static_cast<float>((i * 71) % 977) / 977.0f);
+        const auto r = radius * radialNorm * 0.985f;
+        const auto depth = 0.66f + 0.30f * std::sin(fi * 0.29f + rotationPhase * (0.72f + motion));
         const auto x = centre.x + std::cos(phase) * r;
         const auto y = centre.y + std::sin(phase) * r * depth;
-        const auto sz = 0.42f + static_cast<float>(i % 5) * 0.24f + energy * 0.75f;
-        const auto c = i % 11 == 0 ? gold : (i % 5 == 0 ? magenta : (i % 3 == 0 ? cyan : purple));
-        g.setColour(c.withAlpha(0.025f + energy * 0.14f));
+        const auto sz = 0.36f + static_cast<float>(i % 5) * 0.21f + energy * 0.80f;
+        const auto c = i % 13 == 0 ? gold : (i % 7 == 0 ? magenta : (i % 4 == 0 ? cyan : purple));
+        g.setColour(c.withAlpha(0.025f + motion * 0.025f + energy * 0.17f));
         g.fillEllipse(x - sz * 0.5f, y - sz * 0.5f, sz, sz);
     }
 
@@ -569,123 +586,148 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
                       centre.y + std::sin(angle) * radial * depth };
     }
 
-    // Duration sectors: orbital arcs show how the time-axis polygon is being partitioned.
     for (std::size_t i = 0; i < points.size(); ++i)
     {
         const auto next = (i + 1) % points.size();
         auto start = angles[i];
         auto end = next == 0 ? angles[0] + juce::MathConstants<float>::twoPi : angles[next];
-        const auto rr = radius * (0.84f + 0.035f * static_cast<float>(i % 4));
+        const auto rr = radius * (0.82f + 0.028f * static_cast<float>(i % 5));
         juce::Path sector;
         sector.addCentredArc(centre.x, centre.y, rr, rr * 0.74f, 0.0f, start, end, true);
         const auto c = i % 3 == 0 ? gold : (i % 2 == 0 ? cyan : purple);
-        g.setColour(c.withAlpha(0.08f + tw * 0.12f));
-        g.strokePath(sector, juce::PathStrokeType(1.0f + visualState.durations[i] * 0.22f));
+        g.setColour(c.withAlpha(0.07f + tw * 0.15f));
+        g.strokePath(sector, juce::PathStrokeType(0.85f + visualState.durations[i] * 0.20f));
     }
 
-    // Aurora bands are the actual stochastic waveform geometry, not a canned animation.
-    for (int ribbon = 0; ribbon < 22; ++ribbon)
+    // Historical echoes: many thin paths around the live geometry create the
+    // reference-like sense of mathematical life while remaining derived from
+    // the current breakpoint state.
+    for (int history = 0; history < 20; ++history)
     {
-        juce::Path aurora;
-        const auto ribbonOffset = static_cast<float>(ribbon - 11);
+        juce::Path trace;
+        const auto h = static_cast<float>(history - 10);
         for (std::size_t segment = 0; segment < points.size(); ++segment)
         {
             const auto next = (segment + 1) % points.size();
             const auto p0 = points[segment];
             const auto p1 = points[next];
-            for (int s = 0; s <= 22; ++s)
+            const auto tangent = p1 - p0;
+            auto normal = juce::Point<float>(-tangent.y, tangent.x);
+            const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
+            normal /= len;
+            const auto offset = h * (0.75f + memory * 0.55f)
+                              + std::sin(rotationPhase * (0.45f + history * 0.018f)
+                                       + static_cast<float>(segment) * 0.72f) * (1.5f + motion * 5.0f);
+            const auto p = p0 + normal * offset;
+            if (segment == 0) trace.startNewSubPath(p); else trace.lineTo(p);
+        }
+        trace.closeSubPath();
+        const auto c = history % 5 == 0 ? gold : (history % 3 == 0 ? cyan : purple);
+        g.setColour(c.withAlpha(0.025f + motion * 0.028f + energy * 0.035f));
+        g.strokePath(trace, juce::PathStrokeType(0.55f + (history % 4) * 0.12f,
+                                                 juce::PathStrokeType::curved,
+                                                 juce::PathStrokeType::rounded));
+    }
+
+    for (int ribbon = 0; ribbon < 34; ++ribbon)
+    {
+        juce::Path aurora;
+        const auto ribbonOffset = static_cast<float>(ribbon - 17);
+        for (std::size_t segment = 0; segment < points.size(); ++segment)
+        {
+            const auto next = (segment + 1) % points.size();
+            const auto p0 = points[segment];
+            const auto p1 = points[next];
+            for (int s = 0; s <= 24; ++s)
             {
-                const auto t = static_cast<float>(s) / 22.0f;
+                const auto t = static_cast<float>(s) / 24.0f;
                 auto p = p0 + (p1 - p0) * t;
                 const auto tangent = p1 - p0;
                 auto normal = juce::Point<float>(-tangent.y, tangent.x);
                 const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
                 normal /= len;
-                const auto wave = std::sin(t * juce::MathConstants<float>::pi * (1.0f + tw * 2.0f)
+                const auto wave = std::sin(t * juce::MathConstants<float>::pi * (1.0f + tw * 2.4f)
                                          + static_cast<float>(segment) * (0.44f + aw * 0.6f)
-                                         + rotationPhase * (0.55f + ribbon * 0.017f));
-                p += normal * (ribbonOffset * (1.0f + memory * 0.75f)
-                              + wave * (3.0f + energy * 13.0f + tension * 7.0f));
+                                         + rotationPhase * (0.60f + ribbon * 0.014f));
+                p += normal * (ribbonOffset * (0.65f + memory * 0.55f)
+                              + wave * (2.5f + energy * 14.0f + tension * 8.0f));
                 if (segment == 0 && s == 0) aurora.startNewSubPath(p); else aurora.lineTo(p);
             }
         }
         aurora.closeSubPath();
-        const auto c = ribbon % 5 == 0 ? gold : (ribbon % 4 == 0 ? cyan : (ribbon % 3 == 0 ? magenta : purple));
-        g.setColour(c.withAlpha(0.012f + energy * 0.030f));
-        g.strokePath(aurora, juce::PathStrokeType(16.0f - ribbon * 0.32f,
+        const auto c = ribbon % 7 == 0 ? gold : (ribbon % 5 == 0 ? cyan : (ribbon % 3 == 0 ? magenta : purple));
+        g.setColour(c.withAlpha(0.009f + energy * 0.027f));
+        g.strokePath(aurora, juce::PathStrokeType(13.0f - ribbon * 0.20f,
                                                   juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
-        g.setColour(c.withAlpha(0.045f + energy * 0.10f));
-        g.strokePath(aurora, juce::PathStrokeType(1.2f,
+        g.setColour(c.withAlpha(0.038f + motion * 0.028f + energy * 0.095f));
+        g.strokePath(aurora, juce::PathStrokeType(1.0f,
                                                   juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
     }
 
-    // Storm fronts: transient vortices reveal high walk energy and field tension.
-    const int stormCount = 4 + static_cast<int>(tension * 9.0f);
+    const int stormCount = 6 + static_cast<int>(tension * 12.0f);
     for (int storm = 0; storm < stormCount; ++storm)
     {
         const auto a = rotationPhase * (0.35f + storm * 0.025f) + storm * 2.17f;
-        const auto sr = radius * (0.22f + 0.62f * static_cast<float>((storm * 37) % 97) / 97.0f);
+        const auto sr = radius * (0.20f + 0.65f * static_cast<float>((storm * 37) % 97) / 97.0f);
         const juce::Point<float> sc { centre.x + std::cos(a) * sr,
                                       centre.y + std::sin(a) * sr * 0.70f };
-        const auto stormRadius = 9.0f + tension * 24.0f + energy * 16.0f;
-        juce::ColourGradient sg((storm % 2 == 0 ? gold : magenta).withAlpha(0.12f + energy * 0.16f), sc.x, sc.y,
+        const auto stormRadius = 7.0f + tension * 21.0f + energy * 15.0f;
+        juce::ColourGradient sg((storm % 2 == 0 ? gold : magenta).withAlpha(0.09f + energy * 0.17f), sc.x, sc.y,
                                 juce::Colours::transparentBlack, sc.x + stormRadius, sc.y, true);
         g.setGradientFill(sg);
         g.fillEllipse(sc.x - stormRadius, sc.y - stormRadius, stormRadius * 2.0f, stormRadius * 2.0f);
     }
 
-    // Moving carriers show continuity/memory through the evolving field.
     for (std::size_t segment = 0; segment < points.size(); ++segment)
     {
         const auto next = (segment + 1) % points.size();
         const auto p0 = points[segment];
         const auto p1 = points[next];
-        for (int j = 0; j < 30; ++j)
+        for (int j = 0; j < 46; ++j)
         {
-            const auto t = std::fmod(static_cast<float>(j) / 30.0f
-                                   + rotationPhase * (0.018f + motion * 0.035f + 0.0014f * static_cast<float>(segment)), 1.0f);
+            const auto t = std::fmod(static_cast<float>(j) / 46.0f
+                                   + rotationPhase * (0.020f + motion * 0.042f + 0.0014f * static_cast<float>(segment)), 1.0f);
             auto p = p0 + (p1 - p0) * t;
             const auto tangent = p1 - p0;
             auto normal = juce::Point<float>(-tangent.y, tangent.x);
             const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
             normal /= len;
-            p += normal * std::sin(t * 13.0f + static_cast<float>(segment) + rotationPhase * 2.6f)
-               * (2.0f + energy * 8.0f + motion * 5.0f);
-            const auto c = ((j + static_cast<int>(segment)) % 7 == 0 ? gold : purple).interpolatedWith(cyan, tw * 0.34f);
-            const auto sz = 0.65f + energy * 1.45f + static_cast<float>(j % 4) * 0.22f;
-            g.setColour(c.withAlpha(0.06f + energy * 0.30f));
+            p += normal * std::sin(t * 15.0f + static_cast<float>(segment) + rotationPhase * 2.8f)
+               * (1.7f + energy * 8.0f + motion * 5.5f);
+            const auto c = ((j + static_cast<int>(segment)) % 8 == 0 ? gold : purple).interpolatedWith(cyan, tw * 0.38f);
+            const auto sz = 0.55f + energy * 1.40f + static_cast<float>(j % 4) * 0.20f;
+            g.setColour(c.withAlpha(0.055f + motion * 0.035f + energy * 0.32f));
             g.fillEllipse(p.x - sz * 0.5f, p.y - sz * 0.5f, sz, sz);
         }
     }
 
-    // Breakpoints are cities/tectonic anchors on the stochastic planet.
     for (std::size_t i = 0; i < points.size(); ++i)
     {
         const auto amp = std::abs(visualState.amplitudes[i]);
-        const auto nodeRadius = 3.2f + amp * 4.2f + energy * 1.5f;
+        const auto nodeRadius = 3.0f + amp * 4.0f + energy * 1.4f;
         const auto c = (i % 3 == 0 ? gold : purple).interpolatedWith(magenta, amp * 0.42f);
         g.setColour(c.withAlpha(0.10f));
-        g.fillEllipse(points[i].x - nodeRadius * 3.2f, points[i].y - nodeRadius * 3.2f,
-                      nodeRadius * 6.4f, nodeRadius * 6.4f);
+        g.fillEllipse(points[i].x - nodeRadius * 3.0f, points[i].y - nodeRadius * 3.0f,
+                      nodeRadius * 6.0f, nodeRadius * 6.0f);
         g.setColour(c.withAlpha(0.92f));
         g.fillEllipse(points[i].x - nodeRadius, points[i].y - nodeRadius, nodeRadius * 2.0f, nodeRadius * 2.0f);
         g.setColour(juce::Colours::white.withAlpha(0.90f));
         g.fillEllipse(points[i].x - 1.15f, points[i].y - 1.15f, 2.3f, 2.3f);
     }
 
-    // Terminator and atmospheric rim preserve a recognisable planet silhouette at all times.
-    juce::ColourGradient shadow(juce::Colours::transparentBlack, centre.x - radius * 0.25f, centre.y,
-                                juce::Colours::black.withAlpha(0.72f), centre.x + radius * 0.86f, centre.y, false);
+    // Softer terminator than before: retain planet volume without burying the
+    // mathematical activity that the user needs to see.
+    juce::ColourGradient shadow(juce::Colours::transparentBlack, centre.x - radius * 0.28f, centre.y,
+                                juce::Colours::black.withAlpha(0.48f), centre.x + radius * 0.90f, centre.y, false);
     g.setGradientFill(shadow);
     g.fillEllipse(globe);
-    g.setColour(juce::Colours::white.withAlpha(0.09f));
+    g.setColour(juce::Colours::white.withAlpha(0.10f));
     g.drawEllipse(globe, 1.0f);
-    g.setColour(cyan.withAlpha(0.08f + energy * 0.06f));
+    g.setColour(cyan.withAlpha(0.09f + energy * 0.07f));
     g.drawEllipse(globe.reduced(2.0f), 1.4f);
 
-    // Live readouts orbit the planet like navigation telemetry.
     g.setFont(9.0f);
     auto metric = [&g](const juce::String& label, const juce::String& value,
                        juce::Point<float> p, juce::Colour c)
@@ -707,24 +749,25 @@ void VeloriaAudioProcessorEditor::resized()
 {
     brand.setBounds(22, 14, 210, 24);
     title.setBounds(515, 8, 370, 34);
-    subtitle.setBounds(535, 40, 330, 13);
+    subtitle.setBounds(535, 40, 330, 11);
     presetBox.setBounds(930, 15, 190, 30);
     discoverButton.setBounds(1128, 15, 78, 30);
     newFieldButton.setBounds(1213, 15, 84, 30);
     monoButton.setBounds(1305, 15, 68, 30);
 
-    ampWalk.setBounds(58, 126, 124, 106);
-    timeWalk.setBounds(58, 246, 124, 106);
-    ampMirror.setBounds(58, 366, 124, 106);
-    timeMirror.setBounds(58, 486, 124, 106);
+    ampWalk.setBounds(48, 106, 144, 125);
+    timeWalk.setBounds(48, 234, 144, 125);
+    ampMirror.setBounds(48, 362, 144, 125);
+    timeMirror.setBounds(48, 490, 144, 125);
 
-    attack.setBounds(34, 704, 104, 112);
-    decay.setBounds(150, 704, 104, 112);
-    sustain.setBounds(266, 704, 104, 112);
-    release.setBounds(382, 704, 104, 112);
+    attack.setBounds(24, 680, 116, 150);
+    decay.setBounds(142, 680, 116, 150);
+    sustain.setBounds(260, 680, 116, 150);
+    release.setBounds(378, 680, 116, 150);
 
-    seed.setBounds(548, 688, 110, 116);
-    fieldStatus.setBounds(660, 716, 140, 35);
+    // Seed is deliberately demoted: useful field identity, not a performance macro.
+    seed.setBounds(548, 700, 86, 92);
+    fieldStatus.setBounds(646, 716, 148, 35);
     presetNameEditor.setBounds(808, 674, 300, 29);
     savePresetButton.setBounds(808, 712, 78, 29);
     renamePresetButton.setBounds(894, 712, 82, 29);
@@ -732,6 +775,6 @@ void VeloriaAudioProcessorEditor::resized()
     presetStatus.setBounds(808, 754, 300, 47);
 
     voiceStatus.setBounds(1156, 366, 205, 22);
-    level.setBounds(1194, 688, 144, 122);
+    level.setBounds(1188, 674, 154, 150);
     footerStatus.setBounds(415, 872, 570, 14);
 }
