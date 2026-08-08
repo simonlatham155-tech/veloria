@@ -20,6 +20,9 @@ private:
         void drawRotarySlider(juce::Graphics&, int x, int y, int width, int height,
                               float sliderPosProportional, float rotaryStartAngle,
                               float rotaryEndAngle, juce::Slider&) override;
+        void drawLinearSlider(juce::Graphics&, int x, int y, int width, int height,
+                              float sliderPos, float minSliderPos, float maxSliderPos,
+                              juce::Slider::SliderStyle, juce::Slider&) override;
     };
 
     class MidiLearnSlider final : public juce::Slider
@@ -35,8 +38,8 @@ private:
     void drawStochasticGlobe(juce::Graphics&, juce::Rectangle<float> bounds);
     void drawEvolutionGraph(juce::Graphics&, juce::Rectangle<float> bounds);
     void drawPanel(juce::Graphics&, juce::Rectangle<float> bounds, const juce::String& title);
-    void drawKnobLabel(juce::Graphics&, juce::Slider&, const juce::String& text);
     void configureKnob(MidiLearnSlider&, const juce::String& parameterId, const juce::String& displayName);
+    void configureFieldSlider(MidiLearnSlider&, const juce::String& parameterId, const juce::String& displayName);
     void refreshPresetBox(const juce::String& selectUserPreset = {});
     bool selectedPresetIsUser() const noexcept;
 
@@ -45,6 +48,8 @@ private:
     AuroraLookAndFeel auroraLookAndFeel;
 
     MidiLearnSlider ampWalk, timeWalk, ampMirror, timeMirror;
+    MidiLearnSlider ampDist, timeDist, ampStep, timeStep;
+    MidiLearnSlider walkOrder, breakpoints, pitchStability, curve;
     MidiLearnSlider attack, decay, sustain, release;
     MidiLearnSlider seed, level;
 
@@ -63,12 +68,14 @@ private:
 
     std::unique_ptr<SliderAttachment> ampWalkAttachment, timeWalkAttachment,
         ampMirrorAttachment, timeMirrorAttachment;
+    std::unique_ptr<SliderAttachment> ampDistAttachment, timeDistAttachment,
+        ampStepAttachment, timeStepAttachment, walkOrderAttachment,
+        breakpointsAttachment, pitchStabilityAttachment, curveAttachment;
     std::unique_ptr<SliderAttachment> attackAttachment, decayAttachment,
         sustainAttachment, releaseAttachment, seedAttachment, levelAttachment;
     std::unique_ptr<ButtonAttachment> monoAttachment;
 
     float rotationPhase { 0.0f };
-
     static constexpr int firstUserPresetId = 1001;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessorEditor)
