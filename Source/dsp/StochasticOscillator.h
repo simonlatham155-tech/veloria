@@ -75,7 +75,7 @@ public:
 
     [[nodiscard]] float processSample() noexcept
     {
-        const auto count = juce::jmax<std::size_t>(4, activeBreakpointCount);
+        const auto count = juce::jmax(static_cast<std::size_t>(4), activeBreakpointCount);
         if (segmentIndex >= count)
             segmentIndex = 0;
 
