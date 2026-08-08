@@ -65,13 +65,43 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
+    enum class DrumKind
+    {
+        none,
+        kick,
+        snareBody,
+        snareWire,
+        closedHat,
+        openHat,
+        crash,
+        tom
+    };
+
     struct Voice
     {
         veloria::dsp::StochasticOscillator oscillator;
         juce::ADSR envelope;
         int midiNote { -1 };
         bool active { false };
+        bool percussion { false };
         std::uint64_t age { 0 };
+
+        DrumKind drumKind { DrumKind::none };
+        std::uint64_t percussionSample { 0 };
+        std::uint64_t percussionLengthSamples { 1 };
+        std::uint64_t percussionAttackSamples { 1 };
+        float startAmpWalk { 0.0f };
+        float endAmpWalk { 0.0f };
+        float startTimeWalk { 0.0f };
+        float endTimeWalk { 0.0f };
+        float amplitudeMirror { 0.88f };
+        float timeMirror { 0.45f };
+        float startFrequency { 220.0f };
+        float endFrequency { 220.0f };
+        float contractionPower { 2.0f };
+        float pitchPower { 2.0f };
+        float decayPower { 2.0f };
+        float gain { 1.0f };
     };
 
     struct FactoryPreset
@@ -90,15 +120,19 @@ private:
 
     static constexpr int maxVoices = 8;
     static constexpr int midiLearnParameterCount = 10;
+    static constexpr int drumPresetIndex = 9;
     static const std::array<FactoryPreset, 10> factoryPresets;
     static const std::array<const char*, midiLearnParameterCount> midiLearnParameterIds;
 
     void startNote(int midiNote, float velocity);
+    void startDrumNote(int midiNote, float velocity);
+    void configureDrumVoice(Voice& voice, DrumKind kind, int midiNote, float velocity, int layerIndex = 0);
     void stopNote(int midiNote);
     void stopAllVoices(bool allowTailOff);
     Voice& findVoiceToStart();
     void updateVoiceParameters();
     void applyFactoryPreset(int index);
+    void discoverDrumField();
     void setParameterValue(const juce::String& id, float value);
     void setParameterFromMidi(int parameterIndex, float normalisedValue) noexcept;
     int findMidiParameterIndex(const juce::String& id) const noexcept;
@@ -117,6 +151,8 @@ private:
     juce::Random discoveryRandom { 0x56454c4f };
     std::uint64_t voiceCounter { 0 };
     int currentProgram { 0 };
+    bool drumMode { false };
+    double currentSampleRate { 44100.0 };
 
     std::array<std::atomic<float>, visualBreakpointCount> visualAmplitudes {};
     std::array<std::atomic<float>, visualBreakpointCount> visualDurations {};
