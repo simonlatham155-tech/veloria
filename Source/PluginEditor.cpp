@@ -27,12 +27,9 @@ void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
 {
     auto bounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y),
                                           static_cast<float>(width), static_cast<float>(height));
-
-    // The control name is painted inside the slider component so it can never be
-    // obscured by the child component paint order.
     auto labelBounds = bounds.removeFromTop(18.0f).toNearestInt();
-    g.setColour(juce::Colours::white.withAlpha(0.72f));
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setColour(juce::Colours::white.withAlpha(0.76f));
+    g.setFont(juce::FontOptions(8.7f, juce::Font::bold));
     g.drawFittedText(slider.getName(), labelBounds, juce::Justification::centred, 1);
 
     bounds = bounds.reduced(7.0f, 2.0f);
@@ -112,7 +109,6 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 {
     setSize(1400, 900);
 
-    // LathamAudio is drawn directly in paint so Latham can remain light and Audio bold.
     brand.setText({}, juce::dontSendNotification);
     addAndMakeVisible(brand);
 
@@ -363,7 +359,7 @@ bool VeloriaAudioProcessorEditor::selectedPresetIsUser() const noexcept
 void VeloriaAudioProcessorEditor::timerCallback()
 {
     visualState = audioProcessor.getVisualState();
-    rotationPhase += 0.0022f + visualState.energy * 0.0095f;
+    rotationPhase += 0.0024f + visualState.energy * 0.0100f;
     if (rotationPhase > juce::MathConstants<float>::twoPi)
         rotationPhase -= juce::MathConstants<float>::twoPi;
     voiceStatus.setText("VOICE ENGINE   " + juce::String(visualState.activeVoices) + " / 8 ACTIVE",
@@ -399,17 +395,17 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(purple.withAlpha(0.28f));
     g.drawLine(14.0f, 62.0f, getWidth() - 14.0f, 62.0f, 1.0f);
 
-    // Established LathamAudio mark: one word, weight change rather than spacing.
+    // LATHAMAUDIO is always uppercase. Weight change separates the two halves.
     const juce::Font brandLight(juce::FontOptions(18.0f));
     const juce::Font brandBold(juce::FontOptions(18.0f, juce::Font::bold));
-    const juce::String lhs("Latham");
-    const juce::String rhs("Audio");
+    const juce::String lhs("LATHAM");
+    const juce::String rhs("AUDIO");
     const auto lhsWidth = brandLight.getStringWidthFloat(lhs);
     g.setColour(juce::Colours::white.withAlpha(0.78f));
     g.setFont(brandLight);
     g.drawText(lhs, 22, 14, static_cast<int>(std::ceil(lhsWidth)) + 2, 26, juce::Justification::centredLeft);
     g.setFont(brandBold);
-    g.drawText(rhs, 22 + static_cast<int>(std::ceil(lhsWidth)), 14, 80, 26, juce::Justification::centredLeft);
+    g.drawText(rhs, 22 + static_cast<int>(std::ceil(lhsWidth)), 14, 90, 26, juce::Justification::centredLeft);
 
     drawPanel(g, { 14.0f, 74.0f, 212.0f, 556.0f }, "STOCHASTIC FIELD");
     drawPanel(g, { 236.0f, 74.0f, 892.0f, 556.0f }, "LIVING PLANET / LIVE MATHEMATICAL STATE");
@@ -450,13 +446,12 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setColour(juce::Colours::white.withAlpha(0.30f));
     g.setFont(8.5f);
-    g.drawText("PLANET SURFACE = BREAKPOINT GEOMETRY  /  ORBITS = DURATION FIELD  /  STORMS = ENERGY + WALK", 360, 602, 640, 16,
+    g.drawText("PRIMARY NODES = BREAKPOINTS  /  PARTICLES = FIELD ACTIVITY  /  TRAILS = MEMORY  /  ORBITS = DURATION", 342, 602, 675, 16,
                juce::Justification::centred);
 }
 
 void VeloriaAudioProcessorEditor::drawKnobLabel(juce::Graphics&, juce::Slider&, const juce::String&)
 {
-    // Labels now live inside each slider component via AuroraLookAndFeel.
 }
 
 void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g, juce::Rectangle<float> bounds)
@@ -488,7 +483,6 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
     const auto aw = parameterValue(audioProcessor.parameters, "ampWalk");
     const auto tw = parameterValue(audioProcessor.parameters, "timeWalk");
     const auto am = parameterValue(audioProcessor.parameters, "ampMirror");
-    const auto tm = parameterValue(audioProcessor.parameters, "timeMirror");
     const auto energy = juce::jlimit(0.0f, 1.0f, visualState.energy);
     const auto motion = juce::jlimit(0.0f, 1.0f, tw * 0.70f + aw * 0.20f + energy * 0.10f);
     const auto tension = juce::jlimit(0.0f, 1.0f, aw * 0.60f + am * 0.25f + energy * 0.15f);
@@ -498,77 +492,59 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
     const auto centre = globe.getCentre();
     const auto radius = globe.getWidth() * 0.455f;
 
-    // More visible orbital mathematics than the previous build. These are calm
-    // when the field is constrained and become busier with walk/energy.
-    for (int ring = 0; ring < 11; ++ring)
+    // Outer orbital field. Fine lines stay secondary to the main nodes.
+    for (int ring = 0; ring < 18; ++ring)
     {
-        const auto rr = radius * (0.98f + 0.035f * static_cast<float>(ring));
-        juce::Rectangle<float> orbit(centre.x - rr, centre.y - rr * (0.68f + ring * 0.018f), rr * 2.0f, rr * (1.36f + ring * 0.036f));
-        const auto phase = rotationPhase * (ring % 2 == 0 ? 1.0f : -0.72f) + ring * 0.47f;
+        const auto rr = radius * (0.98f + 0.026f * static_cast<float>(ring));
+        const auto flatten = 0.52f + 0.022f * static_cast<float>((ring * 7) % 13);
+        const auto phase = rotationPhase * (ring % 2 == 0 ? 0.70f : -0.48f) + ring * 0.39f;
         juce::Path arc;
-        arc.addCentredArc(centre.x, centre.y, orbit.getWidth() * 0.5f, orbit.getHeight() * 0.5f,
-                          phase, 0.08f, juce::MathConstants<float>::twoPi - 0.08f, true);
-        const auto c = ring % 4 == 0 ? gold : (ring % 3 == 0 ? cyan : purple);
-        g.setColour(c.withAlpha(0.055f + motion * 0.035f + energy * 0.055f));
-        g.strokePath(arc, juce::PathStrokeType(0.65f + ring * 0.045f));
+        arc.addCentredArc(centre.x, centre.y, rr, rr * flatten, phase,
+                          0.05f, juce::MathConstants<float>::twoPi - 0.05f, true);
+        const auto c = ring % 5 == 0 ? gold : (ring % 4 == 0 ? cyan : purple);
+        g.setColour(c.withAlpha(0.028f + motion * 0.035f + energy * 0.045f));
+        g.strokePath(arc, juce::PathStrokeType(0.45f + 0.035f * static_cast<float>(ring % 5)));
     }
 
     juce::ColourGradient halo(purple.withAlpha(0.24f + energy * 0.24f), centre.x, centre.y,
                                juce::Colours::transparentBlack, centre.x, centre.y + radius * 1.30f, true);
-    halo.addColour(0.38, magenta.withAlpha(0.18f + tension * 0.14f));
-    halo.addColour(0.69, orange.withAlpha(0.08f + energy * 0.10f));
+    halo.addColour(0.35, magenta.withAlpha(0.18f + tension * 0.14f));
+    halo.addColour(0.70, orange.withAlpha(0.07f + energy * 0.11f));
     g.setGradientFill(halo);
-    g.fillEllipse(globe.expanded(24.0f));
+    g.fillEllipse(globe.expanded(28.0f));
 
-    juce::ColourGradient body(juce::Colour::fromRGB(31, 13, 53).withAlpha(0.90f),
+    juce::ColourGradient body(juce::Colour::fromRGB(30, 12, 51).withAlpha(0.87f),
                                centre.x - radius * 0.38f, centre.y - radius * 0.48f,
-                               juce::Colour::fromRGB(1, 2, 7).withAlpha(0.98f),
+                               juce::Colour::fromRGB(1, 2, 7).withAlpha(0.97f),
                                centre.x + radius * 0.80f, centre.y + radius * 0.84f, true);
-    body.addColour(0.38, juce::Colour::fromRGB(65, 18, 93).withAlpha(0.48f));
-    body.addColour(0.62, juce::Colour::fromRGB(26, 20, 82).withAlpha(0.32f));
+    body.addColour(0.36, juce::Colour::fromRGB(70, 17, 100).withAlpha(0.44f));
+    body.addColour(0.62, juce::Colour::fromRGB(26, 20, 82).withAlpha(0.28f));
     g.setGradientFill(body);
     g.fillEllipse(globe);
 
-    for (int lat = -6; lat <= 6; ++lat)
-    {
-        const auto yOffset = static_cast<float>(lat) / 7.0f;
-        const auto widthFactor = std::sqrt(juce::jmax(0.0f, 1.0f - yOffset * yOffset));
-        const auto wobble = 1.0f + 0.032f * motion * std::sin(rotationPhase * 2.2f + lat);
-        juce::Rectangle<float> r(centre.x - radius * widthFactor * wobble,
-                                 centre.y + yOffset * radius * 0.86f - radius * 0.05f,
-                                 radius * 2.0f * widthFactor * wobble, radius * 0.10f);
-        g.setColour((lat % 2 == 0 ? purple : cyan).withAlpha(0.028f + motion * 0.050f));
-        g.drawEllipse(r, 0.60f);
-    }
-    for (int lon = 0; lon < 13; ++lon)
-    {
-        const auto a = static_cast<float>(lon) / 13.0f * juce::MathConstants<float>::pi + rotationPhase * 0.18f;
-        const auto w = juce::jmax(10.0f, std::abs(std::cos(a)) * radius * 2.0f);
-        juce::Rectangle<float> r(centre.x - w * 0.5f, centre.y - radius, w, radius * 2.0f);
-        g.setColour((lon % 4 == 0 ? gold : purple).withAlpha(0.020f + memory * 0.030f));
-        g.drawEllipse(r, 0.50f);
-    }
-
-    // Dense atmosphere. Deterministic placement keeps this a visualisation, not
-    // an unrelated random particle effect.
-    for (int i = 0; i < 980; ++i)
+    // Deep background particles: apparent back hemisphere.
+    for (int i = 0; i < 1250; ++i)
     {
         const auto fi = static_cast<float>(i);
-        const auto phase = fi * 2.39996323f + rotationPhase * (0.15f + static_cast<float>(i % 13) * 0.018f);
-        const auto radialNorm = std::sqrt(static_cast<float>((i * 71) % 977) / 977.0f);
-        const auto r = radius * radialNorm * 0.985f;
-        const auto depth = 0.66f + 0.30f * std::sin(fi * 0.29f + rotationPhase * (0.72f + motion));
+        const auto phase = fi * 2.39996323f + rotationPhase * (0.08f + static_cast<float>(i % 17) * 0.007f);
+        const auto radialNorm = std::sqrt(static_cast<float>((i * 73) % 1249) / 1249.0f);
+        const auto r = radius * radialNorm * 0.99f;
+        const auto z = std::sin(fi * 0.173f + rotationPhase * (0.32f + motion * 0.22f));
+        const auto squash = 0.58f + 0.22f * (z + 1.0f) * 0.5f;
         const auto x = centre.x + std::cos(phase) * r;
-        const auto y = centre.y + std::sin(phase) * r * depth;
-        const auto sz = 0.36f + static_cast<float>(i % 5) * 0.21f + energy * 0.80f;
-        const auto c = i % 13 == 0 ? gold : (i % 7 == 0 ? magenta : (i % 4 == 0 ? cyan : purple));
-        g.setColour(c.withAlpha(0.025f + motion * 0.025f + energy * 0.17f));
+        const auto y = centre.y + std::sin(phase) * r * squash;
+        const auto depth = juce::jlimit(0.0f, 1.0f, (z + 1.0f) * 0.5f);
+        const auto sz = 0.28f + depth * 0.75f + static_cast<float>(i % 4) * 0.13f;
+        const auto c = i % 17 == 0 ? gold : (i % 9 == 0 ? magenta : (i % 5 == 0 ? cyan : purple));
+        g.setColour(c.withAlpha(0.018f + depth * 0.045f + energy * 0.065f));
         g.fillEllipse(x - sz * 0.5f, y - sz * 0.5f, sz, sz);
     }
 
     float totalDuration = 0.0f;
-    for (const auto d : visualState.durations) totalDuration += juce::jmax(0.001f, d);
+    for (const auto d : visualState.durations)
+        totalDuration += juce::jmax(0.001f, d);
     totalDuration = juce::jmax(0.001f, totalDuration);
+
     std::array<juce::Point<float>, VeloriaAudioProcessor::visualBreakpointCount> points {};
     std::array<float, VeloriaAudioProcessor::visualBreakpointCount> angles {};
     float cumulative = 0.0f;
@@ -580,32 +556,31 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
         angles[i] = angle;
         cumulative += duration;
         const auto amplitude = juce::jlimit(-1.0f, 1.0f, visualState.amplitudes[i]);
-        const auto radial = radius * (0.50f + amplitude * 0.31f + std::sin(angle * 3.0f) * tw * 0.035f);
+        const auto radial = radius * (0.52f + amplitude * 0.29f + std::sin(angle * 3.0f) * tw * 0.032f);
         const auto depth = 0.70f + 0.30f * std::sin(angle * 2.0f + rotationPhase * 0.55f);
         points[i] = { centre.x + std::cos(angle) * radial,
                       centre.y + std::sin(angle) * radial * depth };
     }
 
+    // Duration relationship arcs.
     for (std::size_t i = 0; i < points.size(); ++i)
     {
         const auto next = (i + 1) % points.size();
         auto start = angles[i];
         auto end = next == 0 ? angles[0] + juce::MathConstants<float>::twoPi : angles[next];
-        const auto rr = radius * (0.82f + 0.028f * static_cast<float>(i % 5));
+        const auto rr = radius * (0.79f + 0.026f * static_cast<float>(i % 6));
         juce::Path sector;
-        sector.addCentredArc(centre.x, centre.y, rr, rr * 0.74f, 0.0f, start, end, true);
+        sector.addCentredArc(centre.x, centre.y, rr, rr * 0.72f, 0.0f, start, end, true);
         const auto c = i % 3 == 0 ? gold : (i % 2 == 0 ? cyan : purple);
-        g.setColour(c.withAlpha(0.07f + tw * 0.15f));
-        g.strokePath(sector, juce::PathStrokeType(0.85f + visualState.durations[i] * 0.20f));
+        g.setColour(c.withAlpha(0.045f + tw * 0.12f));
+        g.strokePath(sector, juce::PathStrokeType(0.60f + visualState.durations[i] * 0.12f));
     }
 
-    // Historical echoes: many thin paths around the live geometry create the
-    // reference-like sense of mathematical life while remaining derived from
-    // the current breakpoint state.
-    for (int history = 0; history < 20; ++history)
+    // Memory trails: many thin echoes of the exact breakpoint skeleton.
+    for (int history = 0; history < 38; ++history)
     {
         juce::Path trace;
-        const auto h = static_cast<float>(history - 10);
+        const auto h = static_cast<float>(history - 19);
         for (std::size_t segment = 0; segment < points.size(); ++segment)
         {
             const auto next = (segment + 1) % points.size();
@@ -615,117 +590,159 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
             auto normal = juce::Point<float>(-tangent.y, tangent.x);
             const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
             normal /= len;
-            const auto offset = h * (0.75f + memory * 0.55f)
-                              + std::sin(rotationPhase * (0.45f + history * 0.018f)
-                                       + static_cast<float>(segment) * 0.72f) * (1.5f + motion * 5.0f);
+            const auto phase = rotationPhase * (0.24f + history * 0.006f)
+                             + static_cast<float>(segment) * 0.73f;
+            const auto offset = h * (0.42f + memory * 0.31f)
+                              + std::sin(phase) * (1.0f + motion * 3.8f);
             const auto p = p0 + normal * offset;
             if (segment == 0) trace.startNewSubPath(p); else trace.lineTo(p);
         }
         trace.closeSubPath();
-        const auto c = history % 5 == 0 ? gold : (history % 3 == 0 ? cyan : purple);
-        g.setColour(c.withAlpha(0.025f + motion * 0.028f + energy * 0.035f));
-        g.strokePath(trace, juce::PathStrokeType(0.55f + (history % 4) * 0.12f,
+        const auto c = history % 9 == 0 ? gold : (history % 6 == 0 ? cyan : purple);
+        g.setColour(c.withAlpha(0.014f + memory * 0.020f + energy * 0.025f));
+        g.strokePath(trace, juce::PathStrokeType(0.38f + static_cast<float>(history % 4) * 0.08f,
                                                  juce::PathStrokeType::curved,
                                                  juce::PathStrokeType::rounded));
     }
 
-    for (int ribbon = 0; ribbon < 34; ++ribbon)
+    // Fine filament cloud. Lines are subordinate to nodes and particles.
+    for (int ribbon = 0; ribbon < 46; ++ribbon)
     {
-        juce::Path aurora;
-        const auto ribbonOffset = static_cast<float>(ribbon - 17);
+        juce::Path filament;
+        const auto ribbonOffset = static_cast<float>(ribbon - 23);
         for (std::size_t segment = 0; segment < points.size(); ++segment)
         {
             const auto next = (segment + 1) % points.size();
             const auto p0 = points[segment];
             const auto p1 = points[next];
-            for (int s = 0; s <= 24; ++s)
+            for (int s = 0; s <= 16; ++s)
             {
-                const auto t = static_cast<float>(s) / 24.0f;
+                const auto t = static_cast<float>(s) / 16.0f;
                 auto p = p0 + (p1 - p0) * t;
                 const auto tangent = p1 - p0;
                 auto normal = juce::Point<float>(-tangent.y, tangent.x);
                 const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
                 normal /= len;
-                const auto wave = std::sin(t * juce::MathConstants<float>::pi * (1.0f + tw * 2.4f)
-                                         + static_cast<float>(segment) * (0.44f + aw * 0.6f)
-                                         + rotationPhase * (0.60f + ribbon * 0.014f));
-                p += normal * (ribbonOffset * (0.65f + memory * 0.55f)
-                              + wave * (2.5f + energy * 14.0f + tension * 8.0f));
-                if (segment == 0 && s == 0) aurora.startNewSubPath(p); else aurora.lineTo(p);
+                const auto wave = std::sin(t * juce::MathConstants<float>::pi * (1.0f + tw * 2.6f)
+                                         + static_cast<float>(segment) * (0.41f + aw * 0.64f)
+                                         + rotationPhase * (0.34f + ribbon * 0.007f));
+                p += normal * (ribbonOffset * (0.34f + memory * 0.34f)
+                              + wave * (1.8f + energy * 9.0f + tension * 5.0f));
+                if (segment == 0 && s == 0) filament.startNewSubPath(p); else filament.lineTo(p);
             }
         }
-        aurora.closeSubPath();
-        const auto c = ribbon % 7 == 0 ? gold : (ribbon % 5 == 0 ? cyan : (ribbon % 3 == 0 ? magenta : purple));
-        g.setColour(c.withAlpha(0.009f + energy * 0.027f));
-        g.strokePath(aurora, juce::PathStrokeType(13.0f - ribbon * 0.20f,
-                                                  juce::PathStrokeType::curved,
-                                                  juce::PathStrokeType::rounded));
-        g.setColour(c.withAlpha(0.038f + motion * 0.028f + energy * 0.095f));
-        g.strokePath(aurora, juce::PathStrokeType(1.0f,
-                                                  juce::PathStrokeType::curved,
-                                                  juce::PathStrokeType::rounded));
+        filament.closeSubPath();
+        const auto c = ribbon % 11 == 0 ? gold : (ribbon % 7 == 0 ? cyan : (ribbon % 5 == 0 ? magenta : purple));
+        g.setColour(c.withAlpha(0.010f + motion * 0.012f + energy * 0.032f));
+        g.strokePath(filament, juce::PathStrokeType(0.55f,
+                                                    juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
     }
 
-    const int stormCount = 6 + static_cast<int>(tension * 12.0f);
-    for (int storm = 0; storm < stormCount; ++storm)
-    {
-        const auto a = rotationPhase * (0.35f + storm * 0.025f) + storm * 2.17f;
-        const auto sr = radius * (0.20f + 0.65f * static_cast<float>((storm * 37) % 97) / 97.0f);
-        const juce::Point<float> sc { centre.x + std::cos(a) * sr,
-                                      centre.y + std::sin(a) * sr * 0.70f };
-        const auto stormRadius = 7.0f + tension * 21.0f + energy * 15.0f;
-        juce::ColourGradient sg((storm % 2 == 0 ? gold : magenta).withAlpha(0.09f + energy * 0.17f), sc.x, sc.y,
-                                juce::Colours::transparentBlack, sc.x + stormRadius, sc.y, true);
-        g.setGradientFill(sg);
-        g.fillEllipse(sc.x - stormRadius, sc.y - stormRadius, stormRadius * 2.0f, stormRadius * 2.0f);
-    }
-
+    // Particle streams directly around every breakpoint-to-breakpoint segment.
     for (std::size_t segment = 0; segment < points.size(); ++segment)
     {
         const auto next = (segment + 1) % points.size();
         const auto p0 = points[segment];
         const auto p1 = points[next];
-        for (int j = 0; j < 46; ++j)
+        const auto tangent = p1 - p0;
+        auto normal = juce::Point<float>(-tangent.y, tangent.x);
+        const auto nlen = juce::jmax(1.0f, normal.getDistanceFromOrigin());
+        normal /= nlen;
+
+        for (int j = 0; j < 78; ++j)
         {
-            const auto t = std::fmod(static_cast<float>(j) / 46.0f
-                                   + rotationPhase * (0.020f + motion * 0.042f + 0.0014f * static_cast<float>(segment)), 1.0f);
-            auto p = p0 + (p1 - p0) * t;
-            const auto tangent = p1 - p0;
-            auto normal = juce::Point<float>(-tangent.y, tangent.x);
-            const auto len = juce::jmax(1.0f, normal.getDistanceFromOrigin());
-            normal /= len;
-            p += normal * std::sin(t * 15.0f + static_cast<float>(segment) + rotationPhase * 2.8f)
-               * (1.7f + energy * 8.0f + motion * 5.5f);
-            const auto c = ((j + static_cast<int>(segment)) % 8 == 0 ? gold : purple).interpolatedWith(cyan, tw * 0.38f);
-            const auto sz = 0.55f + energy * 1.40f + static_cast<float>(j % 4) * 0.20f;
-            g.setColour(c.withAlpha(0.055f + motion * 0.035f + energy * 0.32f));
+            const auto lane = static_cast<float>((j % 9) - 4);
+            const auto speed = 0.010f + motion * 0.030f + 0.0008f * static_cast<float>((j + segment) % 7);
+            const auto t = std::fmod(static_cast<float>(j) / 78.0f
+                                   + rotationPhase * speed
+                                   + static_cast<float>(segment) * 0.031f, 1.0f);
+            auto p = p0 + tangent * t;
+            const auto localWave = std::sin(t * (9.0f + tw * 13.0f)
+                                          + static_cast<float>(segment) * 1.7f
+                                          + rotationPhase * (0.7f + j * 0.004f));
+            p += normal * (lane * (0.55f + memory * 0.45f)
+                         + localWave * (1.2f + motion * 4.0f + energy * 4.5f));
+
+            const auto depth = 0.5f + 0.5f * std::sin(static_cast<float>(j) * 0.77f
+                                                     + static_cast<float>(segment) * 0.41f
+                                                     + rotationPhase * 0.9f);
+            const auto c = ((j + static_cast<int>(segment)) % 13 == 0 ? gold
+                          : ((j + static_cast<int>(segment)) % 8 == 0 ? cyan : purple))
+                               .interpolatedWith(magenta, tension * 0.20f);
+            const auto sz = 0.45f + depth * 1.25f + energy * 0.80f;
+            g.setColour(c.withAlpha(0.045f + depth * 0.16f + energy * 0.16f));
             g.fillEllipse(p.x - sz * 0.5f, p.y - sz * 0.5f, sz, sz);
         }
     }
 
+    // Free-floating near particles: apparent foreground, still parameter-driven.
+    for (int i = 0; i < 720; ++i)
+    {
+        const auto fi = static_cast<float>(i);
+        const auto base = fi * 2.39996323f;
+        const auto speed = 0.10f + static_cast<float>(i % 19) * 0.006f + motion * 0.14f;
+        const auto angle = base + rotationPhase * speed;
+        const auto shell = 0.18f + 0.96f * static_cast<float>((i * 83) % 719) / 719.0f;
+        const auto breathing = 1.0f + std::sin(fi * 0.21f + rotationPhase * (0.6f + motion)) * (0.015f + aw * 0.035f);
+        const auto r = radius * shell * breathing;
+        const auto z = std::sin(fi * 0.137f + rotationPhase * 0.72f + tw * 2.0f);
+        const auto x = centre.x + std::cos(angle) * r;
+        const auto y = centre.y + std::sin(angle) * r * (0.64f + 0.18f * z);
+        const auto depth = juce::jlimit(0.0f, 1.0f, (z + 1.0f) * 0.5f);
+        const auto c = i % 23 == 0 ? gold : (i % 11 == 0 ? magenta : (i % 7 == 0 ? cyan : purple));
+        const auto sz = 0.50f + depth * 1.65f + energy * 1.05f;
+        g.setColour(c.withAlpha(0.030f + depth * 0.20f + energy * 0.18f));
+        g.fillEllipse(x - sz * 0.5f, y - sz * 0.5f, sz, sz);
+
+        if (i % 37 == 0)
+        {
+            const auto tail = juce::Point<float>(std::cos(angle - 0.04f), std::sin(angle - 0.04f) * 0.72f);
+            g.setColour(c.withAlpha(0.025f + energy * 0.045f));
+            g.drawLine(x, y, x - tail.x * (4.0f + motion * 7.0f), y - tail.y * (4.0f + motion * 7.0f), 0.55f);
+        }
+    }
+
+    // Small stochastic storms. Rare bright events, never replacing the skeleton.
+    const int stormCount = 5 + static_cast<int>(tension * 10.0f);
+    for (int storm = 0; storm < stormCount; ++storm)
+    {
+        const auto idx = static_cast<std::size_t>((storm * 5 + 1) % static_cast<int>(points.size()));
+        const auto anchor = points[idx];
+        const auto stormRadius = 5.0f + tension * 13.0f + energy * 8.0f;
+        const auto wobbleX = std::sin(rotationPhase * (0.8f + storm * 0.05f) + storm) * stormRadius * 0.55f;
+        const auto wobbleY = std::cos(rotationPhase * (0.6f + storm * 0.04f) + storm * 1.3f) * stormRadius * 0.40f;
+        const juce::Point<float> sc { anchor.x + wobbleX, anchor.y + wobbleY };
+        juce::ColourGradient sg((storm % 2 == 0 ? gold : magenta).withAlpha(0.08f + energy * 0.14f), sc.x, sc.y,
+                                juce::Colours::transparentBlack, sc.x + stormRadius, sc.y, true);
+        g.setGradientFill(sg);
+        g.fillEllipse(sc.x - stormRadius, sc.y - stormRadius, stormRadius * 2.0f, stormRadius * 2.0f);
+    }
+
+    // Main reference points: always the brightest and clearest objects.
     for (std::size_t i = 0; i < points.size(); ++i)
     {
         const auto amp = std::abs(visualState.amplitudes[i]);
-        const auto nodeRadius = 3.0f + amp * 4.0f + energy * 1.4f;
+        const auto nodeRadius = 3.0f + amp * 4.0f + energy * 1.35f;
         const auto c = (i % 3 == 0 ? gold : purple).interpolatedWith(magenta, amp * 0.42f);
-        g.setColour(c.withAlpha(0.10f));
-        g.fillEllipse(points[i].x - nodeRadius * 3.0f, points[i].y - nodeRadius * 3.0f,
-                      nodeRadius * 6.0f, nodeRadius * 6.0f);
+        g.setColour(c.withAlpha(0.08f));
+        g.fillEllipse(points[i].x - nodeRadius * 3.3f, points[i].y - nodeRadius * 3.3f,
+                      nodeRadius * 6.6f, nodeRadius * 6.6f);
         g.setColour(c.withAlpha(0.92f));
-        g.fillEllipse(points[i].x - nodeRadius, points[i].y - nodeRadius, nodeRadius * 2.0f, nodeRadius * 2.0f);
-        g.setColour(juce::Colours::white.withAlpha(0.90f));
+        g.fillEllipse(points[i].x - nodeRadius, points[i].y - nodeRadius,
+                      nodeRadius * 2.0f, nodeRadius * 2.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.94f));
         g.fillEllipse(points[i].x - 1.15f, points[i].y - 1.15f, 2.3f, 2.3f);
     }
 
-    // Softer terminator than before: retain planet volume without burying the
-    // mathematical activity that the user needs to see.
-    juce::ColourGradient shadow(juce::Colours::transparentBlack, centre.x - radius * 0.28f, centre.y,
-                                juce::Colours::black.withAlpha(0.48f), centre.x + radius * 0.90f, centre.y, false);
+    // Subtle rim preserves a planet silhouette without burying the particle field.
+    juce::ColourGradient shadow(juce::Colours::transparentBlack, centre.x - radius * 0.35f, centre.y,
+                                juce::Colours::black.withAlpha(0.30f), centre.x + radius * 0.96f, centre.y, false);
     g.setGradientFill(shadow);
     g.fillEllipse(globe);
     g.setColour(juce::Colours::white.withAlpha(0.10f));
     g.drawEllipse(globe, 1.0f);
-    g.setColour(cyan.withAlpha(0.09f + energy * 0.07f));
+    g.setColour(cyan.withAlpha(0.08f + energy * 0.07f));
     g.drawEllipse(globe.reduced(2.0f), 1.4f);
 
     g.setFont(9.0f);
@@ -747,7 +764,7 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
 
 void VeloriaAudioProcessorEditor::resized()
 {
-    brand.setBounds(22, 14, 210, 24);
+    brand.setBounds(22, 14, 230, 24);
     title.setBounds(515, 8, 370, 34);
     subtitle.setBounds(535, 40, 330, 11);
     presetBox.setBounds(930, 15, 190, 30);
@@ -765,7 +782,6 @@ void VeloriaAudioProcessorEditor::resized()
     sustain.setBounds(260, 680, 116, 150);
     release.setBounds(378, 680, 116, 150);
 
-    // Seed is deliberately demoted: useful field identity, not a performance macro.
     seed.setBounds(548, 700, 86, 92);
     fieldStatus.setBounds(646, 716, 148, 35);
     presetNameEditor.setBounds(808, 674, 300, 29);
