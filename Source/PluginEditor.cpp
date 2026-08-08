@@ -114,18 +114,35 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     for(auto* b:{&discoverButton,&newFieldButton,&savePresetButton,&renamePresetButton}){b->setColour(juce::TextButton::buttonColourId,purple.withAlpha(0.24f)); b->setColour(juce::TextButton::textColourOffId,juce::Colours::white); addAndMakeVisible(b);} addAndMakeVisible(deletePresetButton);
     monoButton.setClickingTogglesState(true); monoButton.setColour(juce::ToggleButton::textColourId,juce::Colours::white); monoButton.setColour(juce::ToggleButton::tickColourId,cyan); addAndMakeVisible(monoButton);
 
+    orderButton.setColour(juce::TextButton::buttonColourId, purple.withAlpha(0.22f));
+    orderButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white.withAlpha(0.86f));
+    orderButton.onClick = [this]
+    {
+        auto* raw = audioProcessor.parameters.getRawParameterValue("walkOrder");
+        auto* parameter = audioProcessor.parameters.getParameter("walkOrder");
+        if (raw == nullptr || parameter == nullptr) return;
+        const auto current = raw->load() >= 1.5f ? 2.0f : 1.0f;
+        const auto next = current == 1.0f ? 2.0f : 1.0f;
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(next));
+        parameter->endChangeGesture();
+        refreshOrderButton();
+    };
+    addAndMakeVisible(orderButton);
+    refreshOrderButton();
+
     configureFieldSlider(ampWalk,"ampWalk","AMP WALK"); configureFieldSlider(timeWalk,"timeWalk","TIME WALK");
     configureFieldSlider(ampMirror,"ampMirror","AMP BARRIER"); configureFieldSlider(timeMirror,"timeMirror","TIME BARRIER");
     configureKnob(ampDist,"ampDist","AMP DIST"); configureKnob(timeDist,"timeDist","TIME DIST"); configureKnob(ampStep,"ampStep","AMP STEP"); configureKnob(timeStep,"timeStep","TIME STEP");
-    configureKnob(walkOrder,"walkOrder","ORDER"); configureKnob(breakpoints,"breakpoints","POINTS"); configureKnob(pitchStability,"pitchStability","PITCH LOCK"); configureKnob(curve,"curve","CURVE");
+    configureKnob(chaos,"chaos","CHAOS"); configureKnob(breakpoints,"breakpoints","POINTS"); configureKnob(pitchStability,"pitchStability","PITCH LOCK"); configureKnob(curve,"curve","CURVE");
     configureKnob(attack,"attack","ATTACK"); configureKnob(decay,"decay","DECAY"); configureKnob(sustain,"sustain","SUSTAIN"); configureKnob(release,"release","RELEASE"); configureKnob(seed,"seed","FIELD SEED"); configureKnob(level,"level","LEVEL");
 
-    for(auto* s:{&ampWalk,&timeWalk,&ampMirror,&timeMirror,&ampDist,&timeDist,&ampStep,&timeStep,&walkOrder,&breakpoints,&pitchStability,&curve,&attack,&decay,&sustain,&release,&seed,&level}){s->setLookAndFeel(&auroraLookAndFeel); addAndMakeVisible(s);}
-    for(auto* s:{&ampWalk,&timeWalk,&ampMirror,&timeMirror,&ampStep,&timeStep,&pitchStability,&curve,&attack,&decay,&release}) s->setNumDecimalPlacesToDisplay(2);
-    sustain.setNumDecimalPlacesToDisplay(2); ampDist.setNumDecimalPlacesToDisplay(0); timeDist.setNumDecimalPlacesToDisplay(0); walkOrder.setNumDecimalPlacesToDisplay(0); breakpoints.setNumDecimalPlacesToDisplay(0); seed.setNumDecimalPlacesToDisplay(0); level.setNumDecimalPlacesToDisplay(1); level.setTextValueSuffix(" dB");
+    for(auto* s:{&ampWalk,&timeWalk,&ampMirror,&timeMirror,&ampDist,&timeDist,&ampStep,&timeStep,&chaos,&breakpoints,&pitchStability,&curve,&attack,&decay,&sustain,&release,&seed,&level}){s->setLookAndFeel(&auroraLookAndFeel); addAndMakeVisible(s);}
+    for(auto* s:{&ampWalk,&timeWalk,&ampMirror,&timeMirror,&ampStep,&timeStep,&chaos,&pitchStability,&curve,&attack,&decay,&release}) s->setNumDecimalPlacesToDisplay(2);
+    sustain.setNumDecimalPlacesToDisplay(2); ampDist.setNumDecimalPlacesToDisplay(0); timeDist.setNumDecimalPlacesToDisplay(0); breakpoints.setNumDecimalPlacesToDisplay(0); seed.setNumDecimalPlacesToDisplay(0); level.setNumDecimalPlacesToDisplay(1); level.setTextValueSuffix(" dB");
 
     ampWalkAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"ampWalk",ampWalk); timeWalkAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"timeWalk",timeWalk); ampMirrorAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"ampMirror",ampMirror); timeMirrorAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"timeMirror",timeMirror);
-    ampDistAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"ampDist",ampDist); timeDistAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"timeDist",timeDist); ampStepAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"ampStep",ampStep); timeStepAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"timeStep",timeStep); walkOrderAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"walkOrder",walkOrder); breakpointsAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"breakpoints",breakpoints); pitchStabilityAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"pitchStability",pitchStability); curveAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"curve",curve);
+    ampDistAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"ampDist",ampDist); timeDistAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"timeDist",timeDist); ampStepAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"ampStep",ampStep); timeStepAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"timeStep",timeStep); chaosAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"chaos",chaos); breakpointsAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"breakpoints",breakpoints); pitchStabilityAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"pitchStability",pitchStability); curveAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"curve",curve);
     attackAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"attack",attack); decayAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"decay",decay); sustainAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"sustain",sustain); releaseAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"release",release); seedAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"seed",seed); levelAttachment=std::make_unique<SliderAttachment>(audioProcessor.parameters,"level",level); monoAttachment=std::make_unique<ButtonAttachment>(audioProcessor.parameters,"mono",monoButton);
 
     presetNameEditor.setTextToShowWhenEmpty("Name preset...",juce::Colours::white.withAlpha(0.28f)); presetNameEditor.setColour(juce::TextEditor::backgroundColourId,panel2); presetNameEditor.setColour(juce::TextEditor::textColourId,juce::Colours::white); addAndMakeVisible(presetNameEditor);
@@ -141,7 +158,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 
 VeloriaAudioProcessorEditor::~VeloriaAudioProcessorEditor()
 {
-    for(auto* s:{&ampWalk,&timeWalk,&ampMirror,&timeMirror,&ampDist,&timeDist,&ampStep,&timeStep,&walkOrder,&breakpoints,&pitchStability,&curve,&attack,&decay,&sustain,&release,&seed,&level}) s->setLookAndFeel(nullptr);
+    for(auto* s:{&ampWalk,&timeWalk,&ampMirror,&timeMirror,&ampDist,&timeDist,&ampStep,&timeStep,&chaos,&breakpoints,&pitchStability,&curve,&attack,&decay,&sustain,&release,&seed,&level}) s->setLookAndFeel(nullptr);
 }
 
 void VeloriaAudioProcessorEditor::configureKnob(MidiLearnSlider& s,const juce::String& id,const juce::String& name)
@@ -156,6 +173,12 @@ void VeloriaAudioProcessorEditor::configureFieldSlider(MidiLearnSlider& s,const 
     s.learnCallback=[this,id,name]{audioProcessor.beginMidiLearn(id); presetStatus.setText(name+" - MOVE A MIDI CC",juce::dontSendNotification);}; s.clearCallback=[this,id]{audioProcessor.clearMidiMapping(id);}; s.currentCCCallback=[this,id]{return audioProcessor.getMidiCCForParameter(id);};
 }
 
+void VeloriaAudioProcessorEditor::refreshOrderButton()
+{
+    const auto order = parameterValue(audioProcessor.parameters, "walkOrder") >= 1.5f ? 2 : 1;
+    orderButton.setButtonText("ORDER " + juce::String(order));
+}
+
 void VeloriaAudioProcessorEditor::refreshPresetBox(const juce::String& select)
 {
     presetBox.clear(juce::dontSendNotification); presetBox.addSectionHeading("FACTORY"); const auto f=audioProcessor.getFactoryPresetNames(); for(int i=0;i<f.size();++i)presetBox.addItem(f[i],i+1); const auto u=audioProcessor.getUserPresetNames(); if(!u.isEmpty()){presetBox.addSeparator();presetBox.addSectionHeading("USER PRESETS");for(int i=0;i<u.size();++i)presetBox.addItem(u[i],firstUserPresetId+i);} if(select.isNotEmpty()){const auto i=u.indexOf(select);if(i>=0)presetBox.setSelectedId(firstUserPresetId+i,juce::dontSendNotification);} else {const auto p=audioProcessor.getCurrentProgram();if(p>=0&&p<f.size())presetBox.setSelectedId(p+1,juce::dontSendNotification);}
@@ -165,7 +188,7 @@ bool VeloriaAudioProcessorEditor::selectedPresetIsUser() const noexcept{return p
 
 void VeloriaAudioProcessorEditor::timerCallback()
 {
-    visualState=audioProcessor.getVisualState(); rotationPhase+=0.0022f+visualState.energy*0.0095f; if(rotationPhase>juce::MathConstants<float>::twoPi)rotationPhase-=juce::MathConstants<float>::twoPi; voiceStatus.setText("VOICE ENGINE   "+juce::String(visualState.activeVoices)+" / 8 ACTIVE",juce::dontSendNotification); fieldStatus.setText(juce::String(visualState.activeVoices)+" VOICES  //  "+juce::String((int)(visualState.energy*100.0f))+"% ENERGY",juce::dontSendNotification); repaint();
+    visualState=audioProcessor.getVisualState(); rotationPhase+=0.0022f+visualState.energy*0.0095f; if(rotationPhase>juce::MathConstants<float>::twoPi)rotationPhase-=juce::MathConstants<float>::twoPi; voiceStatus.setText("VOICE ENGINE   "+juce::String(visualState.activeVoices)+" / 8 ACTIVE",juce::dontSendNotification); fieldStatus.setText(juce::String(visualState.activeVoices)+" VOICES  //  "+juce::String((int)(visualState.energy*100.0f))+"% ENERGY",juce::dontSendNotification); refreshOrderButton(); repaint();
 }
 
 void VeloriaAudioProcessorEditor::drawPanel(juce::Graphics& g,juce::Rectangle<float> b,const juce::String& t)
@@ -177,13 +200,22 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(background); juce::ColourGradient bg(purple.withAlpha(0.09f),700,280,background,700,900,true);g.setGradientFill(bg);g.fillRect(getLocalBounds());
     g.setColour(juce::Colours::white.withAlpha(0.06f));g.drawRoundedRectangle(getLocalBounds().reduced(6).toFloat(),13.0f,1.0f);g.setColour(purple.withAlpha(0.28f));g.drawLine(14,62,1386,62,1.0f);
-    const juce::Font light(juce::FontOptions(18.0f)); const juce::Font bold(juce::FontOptions(18.0f,juce::Font::bold)); g.setColour(juce::Colours::white.withAlpha(0.80f)); g.setFont(light);g.drawText("LATHAM",22,14,72,26,juce::Justification::centredLeft);g.setFont(bold);g.drawText("AUDIO",94,14,64,26,juce::Justification::centredLeft);
+
+    // Fixed brand rule: LATHAMAUDIO is one word. Weight, not spacing, separates it.
+    const juce::Font brandLight(juce::FontOptions(18.0f));
+    const juce::Font brandBold(juce::FontOptions(18.0f,juce::Font::bold));
+    const juce::String brandLeft("LATHAM");
+    const juce::String brandRight("AUDIO");
+    const auto leftWidth = static_cast<int>(std::ceil(brandLight.getStringWidthFloat(brandLeft)));
+    g.setColour(juce::Colours::white.withAlpha(0.80f));
+    g.setFont(brandLight); g.drawText(brandLeft,22,14,leftWidth+1,26,juce::Justification::centredLeft);
+    g.setFont(brandBold); g.drawText(brandRight,22+leftWidth-1,14,72,26,juce::Justification::centredLeft);
 
     drawPanel(g,{14,74,330,556},"STOCHASTIC FIELD / PERFORMANCE"); drawPanel(g,{354,74,774,556},"LIVING PLANET / LIVE MATHEMATICAL STATE"); drawPanel(g,{1138,74,248,268},"EVOLUTION / STRUCTURE"); drawPanel(g,{1138,352,248,278},"VOICE / PROBABILITY STATE"); drawPanel(g,{14,640,500,220},"AMPLITUDE ENVELOPE"); drawPanel(g,{524,640,610,220},"PRESETS / FIELD MEMORY"); drawPanel(g,{1144,640,242,220},"OUTPUT");
     drawStochasticGlobe(g,{370,92,742,520}); drawEvolutionGraph(g,{1156,116,212,142});
 
-    const auto bp=(int)parameterValue(audioProcessor.parameters,"breakpoints"); const auto order=(int)parameterValue(audioProcessor.parameters,"walkOrder"); const auto lock=parameterValue(audioProcessor.parameters,"pitchStability");
-    g.setColour(cyan.withAlpha(0.65f));g.setFont(9.0f);g.drawText("BREAKPOINTS  "+juce::String(bp),1156,424,210,18,juce::Justification::centredLeft);g.drawText("WALK ORDER   "+juce::String(order),1156,450,210,18,juce::Justification::centredLeft);g.drawText("PITCH LOCK   "+juce::String(lock*100.0f,0)+"%",1156,476,210,18,juce::Justification::centredLeft);
+    const auto bp=(int)parameterValue(audioProcessor.parameters,"breakpoints"); const auto order=(int)parameterValue(audioProcessor.parameters,"walkOrder"); const auto lock=parameterValue(audioProcessor.parameters,"pitchStability"); const auto chaosValue=parameterValue(audioProcessor.parameters,"chaos");
+    g.setColour(cyan.withAlpha(0.65f));g.setFont(9.0f);g.drawText("BREAKPOINTS  "+juce::String(bp),1156,424,210,18,juce::Justification::centredLeft);g.drawText("WALK ORDER   "+juce::String(order),1156,450,210,18,juce::Justification::centredLeft);g.drawText("PITCH LOCK   "+juce::String(lock*100.0f,0)+"%",1156,476,210,18,juce::Justification::centredLeft);g.setColour(gold.withAlpha(0.72f));g.drawText("CHAOS        "+juce::String(chaosValue*100.0f,0)+"%",1156,502,210,18,juce::Justification::centredLeft);
 }
 
 void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g,juce::Rectangle<float> b)
@@ -193,20 +225,20 @@ void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g,juce::Rec
 
 void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g,juce::Rectangle<float> b)
 {
-    const auto aw=parameterValue(audioProcessor.parameters,"ampWalk"),tw=parameterValue(audioProcessor.parameters,"timeWalk"),am=parameterValue(audioProcessor.parameters,"ampMirror"),energy=juce::jlimit(0.0f,1.0f,visualState.energy); const auto motion=juce::jlimit(0.0f,1.0f,tw*0.7f+aw*0.2f+energy*0.1f); const auto tension=juce::jlimit(0.0f,1.0f,aw*0.6f+am*0.25f+energy*0.15f);
+    const auto aw=parameterValue(audioProcessor.parameters,"ampWalk"),tw=parameterValue(audioProcessor.parameters,"timeWalk"),am=parameterValue(audioProcessor.parameters,"ampMirror"),energy=juce::jlimit(0.0f,1.0f,visualState.energy); const auto chaosValue=parameterValue(audioProcessor.parameters,"chaos"); const auto motion=juce::jlimit(0.0f,1.0f,tw*0.7f+aw*0.2f+energy*0.1f+chaosValue*0.25f); const auto tension=juce::jlimit(0.0f,1.0f,aw*0.6f+am*0.25f+energy*0.15f+chaosValue*0.30f);
     auto globe=b.withSizeKeepingCentre(500.0f,500.0f);const auto c=globe.getCentre();const auto r=globe.getWidth()*0.455f;
     juce::ColourGradient halo(purple.withAlpha(0.25f+energy*0.22f),c.x,c.y,juce::Colours::transparentBlack,c.x,c.y+r*1.3f,true);halo.addColour(0.45,magenta.withAlpha(0.18f));g.setGradientFill(halo);g.fillEllipse(globe.expanded(25));
     juce::ColourGradient body(juce::Colour::fromRGB(35,14,57),c.x-r*.4f,c.y-r*.5f,juce::Colour::fromRGB(2,3,8),c.x+r*.8f,c.y+r*.8f,true);g.setGradientFill(body);g.fillEllipse(globe);
 
     for(int ring=0;ring<12;++ring){const auto rr=r*(0.95f+ring*0.035f);juce::Path p;p.addCentredArc(c.x,c.y,rr,rr*(0.67f+ring*.012f),rotationPhase*(ring%2?-.7f:1.0f),0.08f,juce::MathConstants<float>::twoPi-.08f,true);g.setColour((ring%4==0?gold:(ring%3==0?cyan:purple)).withAlpha(0.05f+motion*.06f));g.strokePath(p,juce::PathStrokeType(.7f));}
 
-    for(int i=0;i<1350;++i){const auto fi=(float)i;const auto phase=fi*2.39996323f+rotationPhase*(0.10f+(i%17)*0.011f);const auto radial=std::sqrt((float)((i*73)%1349)/1349.0f);const auto depth=0.56f+0.42f*std::sin(fi*.23f+rotationPhase*(0.6f+motion));const auto pr=r*radial*(0.82f+0.34f*std::sin(fi*.071f));const auto x=c.x+std::cos(phase)*pr;const auto y=c.y+std::sin(phase)*pr*depth;const auto z=std::sin(phase*.73f+fi*.017f);const auto sz=.35f+(z+1.0f)*.45f+energy*.7f;const auto col=i%19==0?gold:(i%11==0?magenta:(i%5==0?cyan:purple));g.setColour(col.withAlpha(.025f+(z+1.0f)*.025f+energy*.12f));g.fillEllipse(x-sz*.5f,y-sz*.5f,sz,sz);}
+    for(int i=0;i<1350;++i){const auto fi=(float)i;const auto phase=fi*2.39996323f+rotationPhase*(0.10f+(i%17)*0.011f);const auto radial=std::sqrt((float)((i*73)%1349)/1349.0f);const auto depth=0.56f+0.42f*std::sin(fi*.23f+rotationPhase*(0.6f+motion));const auto pr=r*radial*(0.82f+0.34f*std::sin(fi*.071f));const auto x=c.x+std::cos(phase)*pr;const auto y=c.y+std::sin(phase)*pr*depth;const auto z=std::sin(phase*.73f+fi*.017f);const auto sz=.35f+(z+1.0f)*.45f+energy*.7f;const auto col=i%19==0?gold:(i%11==0?magenta:(i%5==0?cyan:purple));g.setColour(col.withAlpha(.025f+(z+1.0f)*.025f+energy*.12f+chaosValue*.03f));g.fillEllipse(x-sz*.5f,y-sz*.5f,sz,sz);}
 
     float total=0;for(auto d:visualState.durations)total+=juce::jmax(.001f,d);std::array<juce::Point<float>,VeloriaAudioProcessor::visualBreakpointCount> pts{};float cum=0;for(std::size_t i=0;i<pts.size();++i){const auto angle=rotationPhase-juce::MathConstants<float>::halfPi+juce::MathConstants<float>::twoPi*(cum/juce::jmax(.001f,total));cum+=juce::jmax(.001f,visualState.durations[i]);const auto rad=r*(.50f+visualState.amplitudes[i]*.31f);pts[i]={c.x+std::cos(angle)*rad,c.y+std::sin(angle)*rad*(.72f+.28f*std::sin(angle*2+rotationPhase*.55f))};}
 
-    for(int h=0;h<28;++h){juce::Path trace;const auto off=(h-14)*.7f;for(std::size_t s=0;s<pts.size();++s){const auto n=(s+1)%pts.size();auto tangent=pts[n]-pts[s];juce::Point<float> normal(-tangent.y,tangent.x);const auto len=juce::jmax(1.0f,normal.getDistanceFromOrigin());normal/=len;const auto p=pts[s]+normal*(off+std::sin(rotationPhase*.6f+h*.17f+s*.65f)*(2.0f+motion*5.0f));if(s==0)trace.startNewSubPath(p);else trace.lineTo(p);}trace.closeSubPath();g.setColour((h%7==0?gold:(h%4==0?cyan:purple)).withAlpha(.022f+energy*.035f));g.strokePath(trace,juce::PathStrokeType(.55f));}
+    for(int h=0;h<28;++h){juce::Path trace;const auto off=(h-14)*.7f;for(std::size_t s=0;s<pts.size();++s){const auto n=(s+1)%pts.size();auto tangent=pts[n]-pts[s];juce::Point<float> normal(-tangent.y,tangent.x);const auto len=juce::jmax(1.0f,normal.getDistanceFromOrigin());normal/=len;const auto p=pts[s]+normal*(off+std::sin(rotationPhase*.6f+h*.17f+s*.65f)*(2.0f+motion*5.0f));if(s==0)trace.startNewSubPath(p);else trace.lineTo(p);}trace.closeSubPath();g.setColour((h%7==0?gold:(h%4==0?cyan:purple)).withAlpha(.022f+energy*.035f+chaosValue*.018f));g.strokePath(trace,juce::PathStrokeType(.55f));}
 
-    for(std::size_t s=0;s<pts.size();++s){const auto n=(s+1)%pts.size();for(int j=0;j<42;++j){const auto t=std::fmod((float)j/42.0f+rotationPhase*(.018f+motion*.035f+s*.001f),1.0f);auto p=pts[s]+(pts[n]-pts[s])*t;auto tangent=pts[n]-pts[s];juce::Point<float> normal(-tangent.y,tangent.x);normal/=juce::jmax(1.0f,normal.getDistanceFromOrigin());p+=normal*std::sin(t*14+s+rotationPhase*2.7f)*(1.7f+energy*7.0f);const auto sz=.5f+energy*1.2f+(j%3)*.18f;g.setColour((j%8==0?gold:purple).interpolatedWith(cyan,tw*.35f).withAlpha(.07f+energy*.28f));g.fillEllipse(p.x-sz*.5f,p.y-sz*.5f,sz,sz);}}
+    for(std::size_t s=0;s<pts.size();++s){const auto n=(s+1)%pts.size();for(int j=0;j<42;++j){const auto t=std::fmod((float)j/42.0f+rotationPhase*(.018f+motion*.035f+s*.001f),1.0f);auto p=pts[s]+(pts[n]-pts[s])*t;auto tangent=pts[n]-pts[s];juce::Point<float> normal(-tangent.y,tangent.x);normal/=juce::jmax(1.0f,normal.getDistanceFromOrigin());p+=normal*std::sin(t*14+s+rotationPhase*2.7f)*(1.7f+energy*7.0f+chaosValue*6.0f);const auto sz=.5f+energy*1.2f+(j%3)*.18f;g.setColour((j%8==0?gold:purple).interpolatedWith(cyan,tw*.35f).withAlpha(.07f+energy*.28f+chaosValue*.06f));g.fillEllipse(p.x-sz*.5f,p.y-sz*.5f,sz,sz);}}
 
     for(std::size_t i=0;i<pts.size();++i){const auto a=std::abs(visualState.amplitudes[i]);const auto nr=3.0f+a*4.0f+energy;const auto col=(i%3==0?gold:purple).interpolatedWith(magenta,a*.4f);g.setColour(col.withAlpha(.14f));g.fillEllipse(pts[i].x-nr*3,pts[i].y-nr*3,nr*6,nr*6);g.setColour(col.withAlpha(.96f));g.fillEllipse(pts[i].x-nr,pts[i].y-nr,nr*2,nr*2);g.setColour(juce::Colours::white.withAlpha(.9f));g.fillEllipse(pts[i].x-1,pts[i].y-1,2,2);}
     juce::ColourGradient shadow(juce::Colours::transparentBlack,c.x-r*.25f,c.y,juce::Colours::black.withAlpha(.42f),c.x+r*.9f,c.y,false);g.setGradientFill(shadow);g.fillEllipse(globe);g.setColour(cyan.withAlpha(.12f+energy*.08f));g.drawEllipse(globe,1.2f);
@@ -216,7 +248,8 @@ void VeloriaAudioProcessorEditor::resized()
 {
     title.setBounds(515,8,370,34);subtitle.setBounds(535,40,330,11);presetBox.setBounds(930,15,190,30);discoverButton.setBounds(1128,15,78,30);newFieldButton.setBounds(1213,15,84,30);monoButton.setBounds(1305,15,68,30);
     ampWalk.setBounds(28,108,64,242);timeWalk.setBounds(104,108,64,242);ampMirror.setBounds(180,108,64,242);timeMirror.setBounds(256,108,64,242);
-    ampDist.setBounds(24,374,70,104);timeDist.setBounds(100,374,70,104);ampStep.setBounds(176,374,70,104);timeStep.setBounds(252,374,70,104);walkOrder.setBounds(24,490,70,104);breakpoints.setBounds(100,490,70,104);pitchStability.setBounds(176,490,70,104);curve.setBounds(252,490,70,104);
+    ampDist.setBounds(24,374,70,104);timeDist.setBounds(100,374,70,104);ampStep.setBounds(176,374,70,104);timeStep.setBounds(252,374,70,104);
+    chaos.setBounds(24,490,70,104);breakpoints.setBounds(100,490,70,104);pitchStability.setBounds(176,490,70,104);curve.setBounds(252,490,70,104);orderButton.setBounds(25,600,68,20);
     attack.setBounds(24,680,116,150);decay.setBounds(142,680,116,150);sustain.setBounds(260,680,116,150);release.setBounds(378,680,116,150);
     seed.setBounds(548,700,86,92);fieldStatus.setBounds(646,716,148,35);presetNameEditor.setBounds(808,674,300,29);savePresetButton.setBounds(808,712,78,29);renamePresetButton.setBounds(894,712,82,29);deletePresetButton.setBounds(984,712,82,29);presetStatus.setBounds(808,754,300,47);voiceStatus.setBounds(1156,366,205,22);level.setBounds(1188,674,154,150);footerStatus.setBounds(415,872,570,14);
 }
