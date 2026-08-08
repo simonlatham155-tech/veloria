@@ -152,7 +152,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 
     for(auto* l:{&fieldStatus,&voiceStatus,&presetStatus,&footerStatus}) addAndMakeVisible(l);
     voiceStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.62f)); fieldStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.55f)); presetStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.40f)); footerStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.25f));
-    footerStatus.setText("LIVE STOCHASTIC PLANET  //  4 FIELD FADERS  //  8 STOCHASTIC DIMENSIONS  //  SEEDED MEMORY",juce::dontSendNotification); footerStatus.setJustificationType(juce::Justification::centred);
+    footerStatus.setText("LIVE STOCHASTIC PLANET  //  BREAKPOINT GEOMETRY  //  PARTICLE FIELD  //  SEEDED MEMORY",juce::dontSendNotification); footerStatus.setJustificationType(juce::Justification::centred);
     visualState=audioProcessor.getVisualState(); startTimerHz(30);
 }
 
@@ -201,15 +201,12 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     g.fillAll(background); juce::ColourGradient bg(purple.withAlpha(0.09f),700,280,background,700,900,true);g.setGradientFill(bg);g.fillRect(getLocalBounds());
     g.setColour(juce::Colours::white.withAlpha(0.06f));g.drawRoundedRectangle(getLocalBounds().reduced(6).toFloat(),13.0f,1.0f);g.setColour(purple.withAlpha(0.28f));g.drawLine(14,62,1386,62,1.0f);
 
-    // Fixed brand rule: LATHAMAUDIO is one word. Weight, not spacing, separates it.
+    // LATHAMAUDIO: one word, LATHAM light / AUDIO bold.
     const juce::Font brandLight(juce::FontOptions(18.0f));
     const juce::Font brandBold(juce::FontOptions(18.0f,juce::Font::bold));
-    const juce::String brandLeft("LATHAM");
-    const juce::String brandRight("AUDIO");
-    const auto leftWidth = static_cast<int>(std::ceil(brandLight.getStringWidthFloat(brandLeft)));
     g.setColour(juce::Colours::white.withAlpha(0.80f));
-    g.setFont(brandLight); g.drawText(brandLeft,22,14,leftWidth+1,26,juce::Justification::centredLeft);
-    g.setFont(brandBold); g.drawText(brandRight,22+leftWidth-1,14,72,26,juce::Justification::centredLeft);
+    g.setFont(brandLight); g.drawText("LATHAM",22,14,70,26,juce::Justification::centredLeft);
+    g.setFont(brandBold); g.drawText("AUDIO",86,14,72,26,juce::Justification::centredLeft);
 
     drawPanel(g,{14,74,330,556},"STOCHASTIC FIELD / PERFORMANCE"); drawPanel(g,{354,74,774,556},"LIVING PLANET / LIVE MATHEMATICAL STATE"); drawPanel(g,{1138,74,248,268},"EVOLUTION / STRUCTURE"); drawPanel(g,{1138,352,248,278},"VOICE / PROBABILITY STATE"); drawPanel(g,{14,640,500,220},"AMPLITUDE ENVELOPE"); drawPanel(g,{524,640,610,220},"PRESETS / FIELD MEMORY"); drawPanel(g,{1144,640,242,220},"OUTPUT");
     drawStochasticGlobe(g,{370,92,742,520}); drawEvolutionGraph(g,{1156,116,212,142});
@@ -225,23 +222,192 @@ void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g,juce::Rec
 
 void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g,juce::Rectangle<float> b)
 {
-    const auto aw=parameterValue(audioProcessor.parameters,"ampWalk"),tw=parameterValue(audioProcessor.parameters,"timeWalk"),am=parameterValue(audioProcessor.parameters,"ampMirror"),energy=juce::jlimit(0.0f,1.0f,visualState.energy); const auto chaosValue=parameterValue(audioProcessor.parameters,"chaos"); const auto motion=juce::jlimit(0.0f,1.0f,tw*0.7f+aw*0.2f+energy*0.1f+chaosValue*0.25f); const auto tension=juce::jlimit(0.0f,1.0f,aw*0.6f+am*0.25f+energy*0.15f+chaosValue*0.30f);
-    auto globe=b.withSizeKeepingCentre(500.0f,500.0f);const auto c=globe.getCentre();const auto r=globe.getWidth()*0.455f;
-    juce::ColourGradient halo(purple.withAlpha(0.25f+energy*0.22f),c.x,c.y,juce::Colours::transparentBlack,c.x,c.y+r*1.3f,true);halo.addColour(0.45,magenta.withAlpha(0.18f));g.setGradientFill(halo);g.fillEllipse(globe.expanded(25));
-    juce::ColourGradient body(juce::Colour::fromRGB(35,14,57),c.x-r*.4f,c.y-r*.5f,juce::Colour::fromRGB(2,3,8),c.x+r*.8f,c.y+r*.8f,true);g.setGradientFill(body);g.fillEllipse(globe);
+    const auto aw = parameterValue(audioProcessor.parameters,"ampWalk");
+    const auto tw = parameterValue(audioProcessor.parameters,"timeWalk");
+    const auto ampBarrier = parameterValue(audioProcessor.parameters,"ampMirror");
+    const auto timeBarrier = parameterValue(audioProcessor.parameters,"timeMirror");
+    const auto chaosValue = parameterValue(audioProcessor.parameters,"chaos");
+    const auto ampDistValue = parameterValue(audioProcessor.parameters,"ampDist");
+    const auto timeDistValue = parameterValue(audioProcessor.parameters,"timeDist");
+    const auto energy = juce::jlimit(0.0f,1.0f,visualState.energy);
+    const auto activity = juce::jlimit(0.0f,1.0f,0.10f+aw*0.24f+tw*0.22f+energy*0.18f+chaosValue*0.42f);
 
-    for(int ring=0;ring<12;++ring){const auto rr=r*(0.95f+ring*0.035f);juce::Path p;p.addCentredArc(c.x,c.y,rr,rr*(0.67f+ring*.012f),rotationPhase*(ring%2?-.7f:1.0f),0.08f,juce::MathConstants<float>::twoPi-.08f,true);g.setColour((ring%4==0?gold:(ring%3==0?cyan:purple)).withAlpha(0.05f+motion*.06f));g.strokePath(p,juce::PathStrokeType(.7f));}
+    auto globe=b.withSizeKeepingCentre(506.0f,506.0f);
+    const auto c=globe.getCentre();
+    const auto r=globe.getWidth()*0.455f;
 
-    for(int i=0;i<1350;++i){const auto fi=(float)i;const auto phase=fi*2.39996323f+rotationPhase*(0.10f+(i%17)*0.011f);const auto radial=std::sqrt((float)((i*73)%1349)/1349.0f);const auto depth=0.56f+0.42f*std::sin(fi*.23f+rotationPhase*(0.6f+motion));const auto pr=r*radial*(0.82f+0.34f*std::sin(fi*.071f));const auto x=c.x+std::cos(phase)*pr;const auto y=c.y+std::sin(phase)*pr*depth;const auto z=std::sin(phase*.73f+fi*.017f);const auto sz=.35f+(z+1.0f)*.45f+energy*.7f;const auto col=i%19==0?gold:(i%11==0?magenta:(i%5==0?cyan:purple));g.setColour(col.withAlpha(.025f+(z+1.0f)*.025f+energy*.12f+chaosValue*.03f));g.fillEllipse(x-sz*.5f,y-sz*.5f,sz,sz);}
+    // Atmospheric bloom behind the sphere.
+    juce::ColourGradient outerGlow(purple.withAlpha(0.20f+energy*0.18f),c.x,c.y,
+                                    juce::Colours::transparentBlack,c.x+r*1.38f,c.y,true);
+    outerGlow.addColour(0.34,magenta.withAlpha(0.14f+chaosValue*0.07f));
+    outerGlow.addColour(0.68,cyan.withAlpha(0.035f));
+    g.setGradientFill(outerGlow); g.fillEllipse(globe.expanded(36.0f));
 
-    float total=0;for(auto d:visualState.durations)total+=juce::jmax(.001f,d);std::array<juce::Point<float>,VeloriaAudioProcessor::visualBreakpointCount> pts{};float cum=0;for(std::size_t i=0;i<pts.size();++i){const auto angle=rotationPhase-juce::MathConstants<float>::halfPi+juce::MathConstants<float>::twoPi*(cum/juce::jmax(.001f,total));cum+=juce::jmax(.001f,visualState.durations[i]);const auto rad=r*(.50f+visualState.amplitudes[i]*.31f);pts[i]={c.x+std::cos(angle)*rad,c.y+std::sin(angle)*rad*(.72f+.28f*std::sin(angle*2+rotationPhase*.55f))};}
+    // Fine orbital cages outside the planet, deliberately subtle.
+    for(int ring=0;ring<18;++ring)
+    {
+        const auto rr=r*(1.01f+ring*0.022f);
+        const auto flatten=0.54f+0.025f*(float)(ring%8);
+        const auto tilt=rotationPhase*(ring%2?-.31f:.23f)+ring*0.21f;
+        juce::Path orbit;
+        orbit.addCentredArc(c.x,c.y,rr,rr*flatten,tilt,0.05f,juce::MathConstants<float>::twoPi-0.05f,true);
+        const auto col=(ring%7==0?gold:(ring%5==0?cyan:purple));
+        g.setColour(col.withAlpha(0.025f+activity*0.035f));
+        g.strokePath(orbit,juce::PathStrokeType(0.55f));
+    }
 
-    for(int h=0;h<28;++h){juce::Path trace;const auto off=(h-14)*.7f;for(std::size_t s=0;s<pts.size();++s){const auto n=(s+1)%pts.size();auto tangent=pts[n]-pts[s];juce::Point<float> normal(-tangent.y,tangent.x);const auto len=juce::jmax(1.0f,normal.getDistanceFromOrigin());normal/=len;const auto p=pts[s]+normal*(off+std::sin(rotationPhase*.6f+h*.17f+s*.65f)*(2.0f+motion*5.0f));if(s==0)trace.startNewSubPath(p);else trace.lineTo(p);}trace.closeSubPath();g.setColour((h%7==0?gold:(h%4==0?cyan:purple)).withAlpha(.022f+energy*.035f+chaosValue*.018f));g.strokePath(trace,juce::PathStrokeType(.55f));}
+    // Base planet body and clipped internal volume.
+    juce::ColourGradient body(juce::Colour::fromRGB(38,12,62),c.x-r*0.65f,c.y-r*0.65f,
+                              juce::Colour::fromRGB(2,3,9),c.x+r*0.78f,c.y+r*0.78f,true);
+    body.addColour(0.34,juce::Colour::fromRGB(45,17,82));
+    body.addColour(0.70,juce::Colour::fromRGB(10,8,28));
+    g.setGradientFill(body); g.fillEllipse(globe);
 
-    for(std::size_t s=0;s<pts.size();++s){const auto n=(s+1)%pts.size();for(int j=0;j<42;++j){const auto t=std::fmod((float)j/42.0f+rotationPhase*(.018f+motion*.035f+s*.001f),1.0f);auto p=pts[s]+(pts[n]-pts[s])*t;auto tangent=pts[n]-pts[s];juce::Point<float> normal(-tangent.y,tangent.x);normal/=juce::jmax(1.0f,normal.getDistanceFromOrigin());p+=normal*std::sin(t*14+s+rotationPhase*2.7f)*(1.7f+energy*7.0f+chaosValue*6.0f);const auto sz=.5f+energy*1.2f+(j%3)*.18f;g.setColour((j%8==0?gold:purple).interpolatedWith(cyan,tw*.35f).withAlpha(.07f+energy*.28f+chaosValue*.06f));g.fillEllipse(p.x-sz*.5f,p.y-sz*.5f,sz,sz);}}
+    juce::Graphics::ScopedSaveState clipped(g);
+    juce::Path sphereClip; sphereClip.addEllipse(globe);
+    g.reduceClipRegion(sphereClip);
 
-    for(std::size_t i=0;i<pts.size();++i){const auto a=std::abs(visualState.amplitudes[i]);const auto nr=3.0f+a*4.0f+energy;const auto col=(i%3==0?gold:purple).interpolatedWith(magenta,a*.4f);g.setColour(col.withAlpha(.14f));g.fillEllipse(pts[i].x-nr*3,pts[i].y-nr*3,nr*6,nr*6);g.setColour(col.withAlpha(.96f));g.fillEllipse(pts[i].x-nr,pts[i].y-nr,nr*2,nr*2);g.setColour(juce::Colours::white.withAlpha(.9f));g.fillEllipse(pts[i].x-1,pts[i].y-1,2,2);}
-    juce::ColourGradient shadow(juce::Colours::transparentBlack,c.x-r*.25f,c.y,juce::Colours::black.withAlpha(.42f),c.x+r*.9f,c.y,false);g.setGradientFill(shadow);g.fillEllipse(globe);g.setColour(cyan.withAlpha(.12f+energy*.08f));g.drawEllipse(globe,1.2f);
+    // Luminous internal atmosphere: many overlapping low-alpha cloudlets.
+    for(int cloud=0;cloud<90;++cloud)
+    {
+        const auto f=(float)cloud;
+        const auto a=f*2.39996323f+rotationPhase*(0.11f+(cloud%9)*0.012f);
+        const auto radial=0.18f+0.76f*std::sqrt((float)((cloud*37)%89)/89.0f);
+        const auto px=c.x+std::cos(a)*r*radial;
+        const auto py=c.y+std::sin(a)*r*radial*(0.58f+0.30f*std::sin(f*0.31f+rotationPhase));
+        const auto size=r*(0.08f+0.12f*(0.5f+0.5f*std::sin(f*1.73f)));
+        const auto cloudCol=(cloud%11==0?gold:(cloud%5==0?magenta:purple));
+        juce::ColourGradient fog(cloudCol.withAlpha(0.012f+activity*0.010f),px,py,
+                                 juce::Colours::transparentBlack,px+size,py,true);
+        g.setGradientFill(fog); g.fillEllipse(px-size,py-size,size*2.0f,size*2.0f);
+    }
+
+    // Construct the actual breakpoint anchors from live amplitude/duration data.
+    float total=0.0f;
+    for(auto d:visualState.durations) total+=juce::jmax(0.001f,d);
+    std::array<juce::Point<float>,VeloriaAudioProcessor::visualBreakpointCount> pts{};
+    float cumulative=0.0f;
+    for(std::size_t i=0;i<pts.size();++i)
+    {
+        const auto angle=rotationPhase-juce::MathConstants<float>::halfPi
+                         +juce::MathConstants<float>::twoPi*(cumulative/juce::jmax(0.001f,total));
+        cumulative+=juce::jmax(0.001f,visualState.durations[i]);
+        const auto radial=r*(0.45f+visualState.amplitudes[i]*0.24f);
+        const auto depth=0.70f+0.24f*std::sin(angle*2.0f+rotationPhase*0.61f+i*0.31f);
+        pts[i]={c.x+std::cos(angle)*radial,c.y+std::sin(angle)*radial*depth};
+    }
+
+    // Hundreds of thin, curved stochastic filaments. They share the breakpoint field
+    // but diverge into separate trajectories, which creates the reference-like web.
+    for(int strand=0;strand<150;++strand)
+    {
+        const float sf=(float)strand;
+        juce::Path filament;
+        const int samples=42;
+        for(int j=0;j<samples;++j)
+        {
+            const float u=(float)j/(float)(samples-1);
+            const auto anchorIndex=(std::size_t)((strand*7+j/4)%pts.size());
+            const auto nextIndex=(anchorIndex+1)%pts.size();
+            const auto blend=std::fmod(u*3.0f+sf*0.037f,1.0f);
+            auto base=pts[anchorIndex]+(pts[nextIndex]-pts[anchorIndex])*blend;
+            const auto orbitAngle=u*juce::MathConstants<float>::twoPi*(1.0f+(strand%5)*0.21f)+sf*0.17f+rotationPhase*(0.35f+tw*0.8f);
+            const auto swirl=r*(0.025f+0.105f*(0.5f+0.5f*std::sin(sf*0.43f))) * (0.45f+activity);
+            base.x+=std::cos(orbitAngle)*swirl + std::sin(sf*1.13f+u*9.0f)*r*0.012f*ampBarrier;
+            base.y+=std::sin(orbitAngle)*swirl*0.72f + std::cos(sf*0.77f+u*11.0f)*r*0.014f*timeBarrier;
+            if(j==0) filament.startNewSubPath(base); else filament.lineTo(base);
+        }
+        const auto colour=(strand%17==0?gold:(strand%9==0?cyan:(strand%5==0?magenta:purple)));
+        g.setColour(colour.withAlpha(0.018f+activity*0.028f));
+        g.strokePath(filament,juce::PathStrokeType(0.38f+(strand%13==0?0.32f:0.0f),juce::PathStrokeType::curved));
+    }
+
+    // Deep particle volume. Particle projection changes with a pseudo-Z value so the
+    // field reads as 3D rather than as dots painted on a disc.
+    const int particleCount=2800;
+    for(int i=0;i<particleCount;++i)
+    {
+        const float fi=(float)i;
+        const auto z=std::sin(fi*0.619f+rotationPhase*(0.19f+tw*0.36f)+std::sin(fi*0.071f)*chaosValue);
+        const auto radial=std::sqrt((float)((i*97)%2797)/2797.0f);
+        const auto angle=fi*2.39996323f+rotationPhase*(0.11f+(i%23)*0.006f)
+                        +std::sin(fi*0.031f+rotationPhase)*chaosValue*0.5f;
+        const auto depthScale=0.64f+0.36f*(z*0.5f+0.5f);
+        const auto turbulence=1.0f+0.12f*std::sin(fi*0.113f+rotationPhase*(1.0f+activity*2.0f));
+        const auto pr=r*radial*depthScale*turbulence;
+        const auto x=c.x+std::cos(angle)*pr;
+        const auto y=c.y+std::sin(angle)*pr*(0.74f+0.20f*z);
+        const auto near=(z+1.0f)*0.5f;
+        const auto size=0.32f+near*1.15f+energy*0.65f+(i%131==0?1.4f:0.0f);
+        auto col=(i%31==0?gold:(i%17==0?magenta:(i%9==0?cyan:purple)));
+        const auto distBias=juce::jlimit(0.0f,1.0f,(ampDistValue+timeDistValue)/10.0f);
+        if(i%47==0) col=col.interpolatedWith(gold,0.25f+0.45f*distBias);
+        const auto alpha=0.018f+near*0.070f+energy*0.060f+chaosValue*0.025f;
+        g.setColour(col.withAlpha(alpha));
+        g.fillEllipse(x-size*0.5f,y-size*0.5f,size,size);
+    }
+
+    // Breakpoint-linked star streams: not a polygon, but particles flowing between anchors.
+    for(std::size_t s=0;s<pts.size();++s)
+    {
+        const auto n=(s+1)%pts.size();
+        const auto delta=pts[n]-pts[s];
+        juce::Point<float> normal(-delta.y,delta.x);
+        normal/=juce::jmax(1.0f,normal.getDistanceFromOrigin());
+        for(int j=0;j<70;++j)
+        {
+            const auto phase=std::fmod((float)j/70.0f+rotationPhase*(0.009f+tw*0.020f)+s*0.071f,1.0f);
+            auto p=pts[s]+delta*phase;
+            const auto curl=std::sin(phase*juce::MathConstants<float>::twoPi*2.0f+s*0.8f+rotationPhase*2.2f);
+            p+=normal*curl*(2.0f+r*0.045f*(activity+chaosValue));
+            const auto spark=(j%19==0);
+            const auto sz=spark?2.1f:0.55f+(j%4)*0.12f;
+            const auto col=spark?gold:(s%3==0?magenta:purple);
+            g.setColour(col.withAlpha(spark?0.34f:0.045f+activity*0.09f));
+            g.fillEllipse(p.x-sz*0.5f,p.y-sz*0.5f,sz,sz);
+        }
+    }
+
+    // Small local storms around the true breakpoint positions.
+    for(std::size_t i=0;i<pts.size();++i)
+    {
+        const auto amp=std::abs(visualState.amplitudes[i]);
+        const auto stormRadius=r*(0.030f+0.050f*amp+0.030f*chaosValue);
+        const auto stormColour=(i%4==0?gold:(i%3==0?cyan:magenta));
+        for(int p=0;p<26;++p)
+        {
+            const auto a=(float)p*2.39996323f+rotationPhase*(0.7f+0.09f*i);
+            const auto rr=stormRadius*std::sqrt((float)(p+1)/26.0f);
+            const auto q=pts[i]+juce::Point<float>(std::cos(a)*rr,std::sin(a)*rr*0.72f);
+            const auto sz=0.55f+(p%7==0?1.2f:0.0f);
+            g.setColour(stormColour.withAlpha(0.035f+amp*0.09f+energy*0.05f));
+            g.fillEllipse(q.x-sz*0.5f,q.y-sz*0.5f,sz,sz);
+        }
+    }
+
+    // Primary mathematical anchors remain readable but no longer dominate the planet.
+    for(std::size_t i=0;i<pts.size();++i)
+    {
+        const auto amp=std::abs(visualState.amplitudes[i]);
+        const auto nr=2.1f+amp*2.2f+energy*0.4f;
+        const auto col=(i%4==0?gold:(i%3==0?cyan:magenta));
+        g.setColour(col.withAlpha(0.06f+amp*0.06f));
+        g.fillEllipse(pts[i].x-nr*3.0f,pts[i].y-nr*3.0f,nr*6.0f,nr*6.0f);
+        g.setColour(col.withAlpha(0.86f));
+        g.fillEllipse(pts[i].x-nr,pts[i].y-nr,nr*2.0f,nr*2.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.82f));
+        g.fillEllipse(pts[i].x-0.8f,pts[i].y-0.8f,1.6f,1.6f);
+    }
+
+    // Spherical lighting: gentle limb darkness, never enough to erase the internal field.
+    juce::ColourGradient limb(juce::Colours::transparentBlack,c.x-r*0.42f,c.y-r*0.28f,
+                              juce::Colours::black.withAlpha(0.34f),c.x+r*0.92f,c.y+r*0.82f,false);
+    g.setGradientFill(limb); g.fillEllipse(globe);
+
+    // Close the sphere with several hairline atmospheric rims.
+    g.setColour(cyan.withAlpha(0.10f+energy*0.05f)); g.drawEllipse(globe,0.9f);
+    g.setColour(purple.withAlpha(0.15f)); g.drawEllipse(globe.reduced(3.0f),0.65f);
+    g.setColour(gold.withAlpha(0.055f+chaosValue*0.035f)); g.drawEllipse(globe.reduced(7.0f),0.50f);
 }
 
 void VeloriaAudioProcessorEditor::resized()
