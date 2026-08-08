@@ -7,21 +7,29 @@
 
 namespace veloria::dsp
 {
-// Xenakis-style dynamic stochastic synthesis core.
+// Veloria dynamic stochastic synthesis core.
 //
-// One waveform cycle is a polygon defined by amplitude/time breakpoints.
-// Each breakpoint has two cascaded random walks:
-//   1) a primary walk that evolves the step size;
-//   2) a secondary walk that moves the breakpoint itself.
-// Both walks use reflecting ("mirror") boundaries.
+// One tuned cycle is a polygon whose amplitude and duration breakpoints evolve
+// through cascaded reflected random walks.  The oscillator deliberately keeps
+// pitch normalisation outside the stochastic geometry: MIDI pitch remains a
+// musical contract while the waveform itself is free to evolve.
 //
-// For keyboard use, breakpoint durations are normalised to the requested MIDI
-// period. That is an instrument constraint around GENDYN: the waveform geometry
-// remains stochastic, while the complete cycle stays tuned to the played note.
+// This is the Mk-I philosophy: probability is part of the oscillator, not an
+// LFO bolted onto a conventional waveform.
 class StochasticOscillator
 {
 public:
     static constexpr std::size_t numBreakpoints = 12;
+
+    enum class Distribution
+    {
+        adaptive,   // musical default: smooth at small walks, heavier tails as energy rises
+        uniform,
+        gaussian,
+        logistic,
+        cauchy,
+        arcsine
+    };
 
     void prepare(double newSampleRate)
     {
@@ -45,6 +53,8 @@ public:
     void setTimeWalk(float value) noexcept { timeWalk = juce::jlimit(0.0f, 1.0f, value); }
     void setAmplitudeMirror(float value) noexcept { amplitudeMirror = juce::jlimit(0.05f, 1.0f, value); }
     void setTimeMirror(float value) noexcept { timeMirror = juce::jlimit(0.05f, 1.0f, value); }
+    void setAmplitudeDistribution(Distribution value) noexcept { amplitudeDistribution = value; }
+    void setTimeDistribution(Distribution value) noexcept { timeDistribution = value; }
 
     void setSeed(std::uint32_t newSeed) noexcept
     {
@@ -65,9 +75,6 @@ public:
     {
         const auto nextIndex = (segmentIndex + 1) % numBreakpoints;
         const auto t = static_cast<float>(segmentPhase);
-
-        // GENDYN is breakpoint-interpolation synthesis. Keep interpolation linear:
-        // the stochastic polygon itself is the oscillator.
         const auto output = amplitudes[segmentIndex]
                           + (amplitudes[nextIndex] - amplitudes[segmentIndex]) * t;
 
@@ -78,7 +85,6 @@ public:
                                     / juce::jmax(1.0e-8, static_cast<double>(normalisedDuration));
 
         segmentPhase += segmentIncrement;
-
         if (segmentPhase >= 1.0)
         {
             segmentPhase -= std::floor(segmentPhase);
@@ -109,13 +115,18 @@ private:
         const auto maxAmpStep = juce::jmap(amplitudeWalk, 0.0002f, 0.24f);
         const auto maxTimeStep = juce::jmap(timeWalk, 0.0002f, 0.20f);
 
+        // Second-order behaviour: probability changes the velocity of the walk,
+        // and that evolving velocity moves the breakpoint.  This gives Veloria
+        // memory/continuity instead of unrelated random waveform replacement.
         amplitudeStepState[index] = reflect(
-            amplitudeStepState[index] + bipolarRandom() * maxAmpStep * 0.35f,
+            amplitudeStepState[index]
+                + distributedRandom(amplitudeDistribution, amplitudeWalk) * maxAmpStep * 0.35f,
             -maxAmpStep,
             maxAmpStep);
 
         timeStepState[index] = reflect(
-            timeStepState[index] + bipolarRandom() * maxTimeStep * 0.35f,
+            timeStepState[index]
+                + distributedRandom(timeDistribution, timeWalk) * maxTimeStep * 0.35f,
             -maxTimeStep,
             maxTimeStep);
 
@@ -140,9 +151,67 @@ private:
         return juce::jmax(0.001f, total);
     }
 
-    [[nodiscard]] float bipolarRandom() noexcept
+    [[nodiscard]] float uniformBipolar() noexcept
     {
         return random.nextFloat() * 2.0f - 1.0f;
+    }
+
+    [[nodiscard]] float gaussianBipolar() noexcept
+    {
+        // Irwin-Hall approximation: strongly favours small organic movements.
+        float sum = 0.0f;
+        for (int i = 0; i < 6; ++i)
+            sum += uniformBipolar();
+        return juce::jlimit(-1.0f, 1.0f, sum / 3.0f);
+    }
+
+    [[nodiscard]] float logisticBipolar() noexcept
+    {
+        const auto u = juce::jlimit(0.0001f, 0.9999f, random.nextFloat());
+        const auto x = std::log(u / (1.0f - u));
+        return juce::jlimit(-1.0f, 1.0f, x * 0.22f);
+    }
+
+    [[nodiscard]] float cauchyBipolar() noexcept
+    {
+        const auto u = juce::jlimit(0.0001f, 0.9999f, random.nextFloat());
+        const auto x = std::tan(juce::MathConstants<float>::pi * (u - 0.5f));
+        return juce::jlimit(-1.0f, 1.0f, x * 0.16f);
+    }
+
+    [[nodiscard]] float arcsineBipolar() noexcept
+    {
+        const auto u = random.nextFloat();
+        return std::sin(juce::MathConstants<float>::pi * (u - 0.5f));
+    }
+
+    [[nodiscard]] float distributedRandom(Distribution distribution, float walkEnergy) noexcept
+    {
+        if (distribution == Distribution::adaptive)
+        {
+            // Small walks favour natural, correlated micro-motion (pads, strings,
+            // bass sustain).  As the stochastic energy opens up, tails become
+            // progressively more adventurous (FX and percussion territory).
+            if (walkEnergy < 0.09f)
+                distribution = Distribution::gaussian;
+            else if (walkEnergy < 0.30f)
+                distribution = Distribution::uniform;
+            else if (walkEnergy < 0.62f)
+                distribution = Distribution::logistic;
+            else
+                distribution = Distribution::cauchy;
+        }
+
+        switch (distribution)
+        {
+            case Distribution::gaussian: return gaussianBipolar();
+            case Distribution::logistic: return logisticBipolar();
+            case Distribution::cauchy:   return cauchyBipolar();
+            case Distribution::arcsine:  return arcsineBipolar();
+            case Distribution::uniform:
+            case Distribution::adaptive:
+            default:                     return uniformBipolar();
+        }
     }
 
     [[nodiscard]] static float reflect(float value, float minimum, float maximum) noexcept
@@ -175,6 +244,8 @@ private:
     float timeWalk { 0.08f };
     float amplitudeMirror { 0.88f };
     float timeMirror { 0.45f };
+    Distribution amplitudeDistribution { Distribution::adaptive };
+    Distribution timeDistribution { Distribution::adaptive };
     std::uint32_t seed { 1u };
 };
 } // namespace veloria::dsp
