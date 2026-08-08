@@ -56,13 +56,3 @@ target_link_libraries(Veloria
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
-
-# Keep local build output quiet for the two known editor-only warnings.
-# This block intentionally comes after JUCE's recommended warning flags so
-# these options are the final Clang/GCC setting for this target.
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-    target_compile_options(Veloria PRIVATE
-        -Wno-deprecated-declarations
-        -Wno-unused-variable
-    )
-endif()
