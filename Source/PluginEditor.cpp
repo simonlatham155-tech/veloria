@@ -18,6 +18,77 @@ float parameterValue(juce::AudioProcessorValueTreeState& state, const char* id)
         return value->load();
     return 0.0f;
 }
+
+float hash01(int n) noexcept
+{
+    const auto x = std::sin((float) n * 12.9898f + 78.233f) * 43758.5453f;
+    return x - std::floor(x);
+}
+
+void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<float> area)
+{
+    const auto h = area.getHeight();
+    const auto stroke = juce::jmax(1.0f, h * 0.045f);
+    const float glyphW = h * 0.78f;
+    const float gap = h * 0.34f;
+    const float totalW = glyphW * 7.0f + gap * 6.0f;
+    const float x0 = area.getCentreX() - totalW * 0.5f;
+    const float y = area.getY();
+    const float top = y + h * 0.10f;
+    const float mid = y + h * 0.50f;
+    const float bot = y + h * 0.90f;
+
+    g.setColour(juce::Colours::white.withAlpha(0.94f));
+    juce::Path p;
+    auto X = [=](int i) { return x0 + (glyphW + gap) * (float) i; };
+
+    // V
+    p.startNewSubPath(X(0), top);
+    p.lineTo(X(0) + glyphW * 0.50f, bot);
+    p.lineTo(X(0) + glyphW, top);
+
+    // E - open, geometric three-stroke form.
+    p.startNewSubPath(X(1) + glyphW, top); p.lineTo(X(1), top);
+    p.lineTo(X(1), bot); p.lineTo(X(1) + glyphW, bot);
+    p.startNewSubPath(X(1), mid); p.lineTo(X(1) + glyphW * 0.72f, mid);
+
+    // L
+    p.startNewSubPath(X(2), top); p.lineTo(X(2), bot); p.lineTo(X(2) + glyphW, bot);
+
+    // O - squared rounded-looking octagon.
+    p.startNewSubPath(X(3) + glyphW * 0.22f, top);
+    p.lineTo(X(3) + glyphW * 0.78f, top);
+    p.lineTo(X(3) + glyphW, top + h * 0.22f);
+    p.lineTo(X(3) + glyphW, bot - h * 0.22f);
+    p.lineTo(X(3) + glyphW * 0.78f, bot);
+    p.lineTo(X(3) + glyphW * 0.22f, bot);
+    p.lineTo(X(3), bot - h * 0.22f);
+    p.lineTo(X(3), top + h * 0.22f);
+    p.closeSubPath();
+
+    // R - futuristic open bowl + diagonal leg.
+    p.startNewSubPath(X(4), bot); p.lineTo(X(4), top);
+    p.lineTo(X(4) + glyphW * 0.68f, top);
+    p.lineTo(X(4) + glyphW, top + h * 0.18f);
+    p.lineTo(X(4) + glyphW, mid - h * 0.06f);
+    p.lineTo(X(4) + glyphW * 0.68f, mid + h * 0.05f);
+    p.lineTo(X(4), mid + h * 0.05f);
+    p.startNewSubPath(X(4) + glyphW * 0.53f, mid + h * 0.05f);
+    p.lineTo(X(4) + glyphW, bot);
+
+    // I
+    p.startNewSubPath(X(5) + glyphW * 0.5f, top); p.lineTo(X(5) + glyphW * 0.5f, bot);
+
+    // A - open apex with crossbar.
+    p.startNewSubPath(X(6), bot);
+    p.lineTo(X(6) + glyphW * 0.50f, top);
+    p.lineTo(X(6) + glyphW, bot);
+    p.startNewSubPath(X(6) + glyphW * 0.24f, mid + h * 0.08f);
+    p.lineTo(X(6) + glyphW * 0.76f, mid + h * 0.08f);
+
+    g.strokePath(p, juce::PathStrokeType(stroke, juce::PathStrokeType::curved,
+                                          juce::PathStrokeType::rounded));
+}
 }
 
 void VeloriaAudioProcessorEditor::AuroraLookAndFeel::drawRotarySlider(
@@ -120,16 +191,15 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
 {
     setSize(1400, 900);
 
-    title.setText("V E L O R I A", juce::dontSendNotification);
+    title.setText({}, juce::dontSendNotification);
     title.setJustificationType(juce::Justification::centred);
-    title.setFont(juce::FontOptions(29.0f));
-    title.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.92f));
+    title.setColour(juce::Label::textColourId, juce::Colours::transparentBlack);
     addAndMakeVisible(title);
 
     subtitle.setText("DYNAMIC STOCHASTIC SYNTHESIS", juce::dontSendNotification);
     subtitle.setJustificationType(juce::Justification::centred);
     subtitle.setFont(juce::FontOptions(7.8f));
-    subtitle.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.25f));
+    subtitle.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.38f));
     addAndMakeVisible(subtitle);
 
     presetBox.setColour(juce::ComboBox::backgroundColourId, panel2);
@@ -285,7 +355,7 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     fieldStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.55f));
     presetStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.40f));
     footerStatus.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.25f));
-    footerStatus.setText("LIVE STOCHASTIC PLANET  //  5 MACRO ANCHORS  //  12 BREAKPOINTS  //  PARTICLE FIELD",
+    footerStatus.setText("LIVE STOCHASTIC PLANET  //  BREAKPOINT GEOMETRY  //  ORBITS  //  DURATION FIELD  //  STORMS",
                          juce::dontSendNotification);
     footerStatus.setJustificationType(juce::Justification::centred);
 
@@ -425,6 +495,8 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     g.setFont(brandBold);
     g.drawText("AUDIO", 86, 14, 72, 26, juce::Justification::centredLeft);
 
+    drawVeloriaWordmark(g, { 520.0f, 9.0f, 360.0f, 31.0f });
+
     drawPanel(g, { 14, 74, 330, 556 }, "STOCHASTIC FIELD / PERFORMANCE");
     drawPanel(g, { 354, 74, 774, 556 }, "LIVING PLANET / LIVE MATHEMATICAL STATE");
     drawPanel(g, { 1138, 74, 248, 268 }, "EVOLUTION / STRUCTURE");
@@ -478,64 +550,59 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
     const auto timeStepValue = parameterValue(audioProcessor.parameters, "timeStep");
     const auto energy = juce::jlimit(0.0f, 1.0f, visualState.energy);
     const auto activity = juce::jlimit(0.0f, 1.0f,
-        0.24f + aw * 0.18f + tw * 0.18f + energy * 0.14f + chaosValue * 0.26f);
+        0.38f + aw * 0.15f + tw * 0.14f + energy * 0.16f + chaosValue * 0.18f);
 
-    auto globe = b.withSizeKeepingCentre(506.0f, 506.0f);
+    auto globe = b.withSizeKeepingCentre(510.0f, 510.0f);
     const auto c = globe.getCentre();
     const auto r = globe.getWidth() * 0.455f;
 
-    // Global halo: luminous but transparent enough that internal detail dominates.
-    juce::ColourGradient outerGlow(purple.withAlpha(0.25f + energy * 0.16f), c.x, c.y,
-                                    juce::Colours::transparentBlack, c.x + r * 1.42f, c.y, true);
-    outerGlow.addColour(0.34, magenta.withAlpha(0.16f + chaosValue * 0.07f));
-    outerGlow.addColour(0.68, cyan.withAlpha(0.045f));
+    // The reference sphere is mostly defined by light and activity, not an opaque ball.
+    juce::ColourGradient outerGlow(purple.withAlpha(0.16f + energy * 0.10f), c.x, c.y,
+                                    juce::Colours::transparentBlack, c.x + r * 1.50f, c.y, true);
+    outerGlow.addColour(0.30, magenta.withAlpha(0.10f));
+    outerGlow.addColour(0.62, cyan.withAlpha(0.025f));
     g.setGradientFill(outerGlow);
-    g.fillEllipse(globe.expanded(40.0f));
+    g.fillEllipse(globe.expanded(54.0f));
 
-    // External orbit families and particle spill, visible around the limb.
-    for (int ring = 0; ring < 24; ++ring)
+    // Outside orbit families and spill particles establish the planetary silhouette.
+    for (int ring = 0; ring < 42; ++ring)
     {
-        const auto rr = r * (0.98f + ring * 0.018f);
-        const auto flatten = 0.50f + 0.022f * (float) (ring % 10);
-        const auto tilt = rotationPhase * (ring % 2 ? -0.34f : 0.27f) + ring * 0.19f;
+        const auto rr = r * (0.94f + ring * 0.010f);
+        const auto flatten = 0.52f + 0.010f * (float) (ring % 15);
+        const auto tilt = rotationPhase * (ring % 2 ? -0.22f : 0.18f) + ring * 0.137f;
         juce::Path orbit;
         orbit.addCentredArc(c.x, c.y, rr, rr * flatten, tilt,
-                            0.04f, juce::MathConstants<float>::twoPi - 0.04f, true);
-        const auto col = ring % 7 == 0 ? gold : (ring % 5 == 0 ? cyan : purple);
-        g.setColour(col.withAlpha(0.035f + activity * 0.035f));
-        g.strokePath(orbit, juce::PathStrokeType(0.55f + (ring % 9 == 0 ? 0.25f : 0.0f)));
+                            0.03f, juce::MathConstants<float>::twoPi - 0.03f, true);
+        const auto col = ring % 11 == 0 ? gold : (ring % 7 == 0 ? cyan : purple);
+        g.setColour(col.withAlpha(0.020f + activity * 0.025f));
+        g.strokePath(orbit, juce::PathStrokeType(0.40f + (ring % 13 == 0 ? 0.28f : 0.0f)));
     }
 
-    for (int i = 0; i < 340; ++i)
+    for (int i = 0; i < 620; ++i)
     {
         const auto fi = (float) i;
-        const auto a = fi * 2.39996323f + rotationPhase * (0.18f + (i % 13) * 0.012f);
-        const auto rr = r * (1.00f + 0.18f * ((float) ((i * 37) % 337) / 337.0f));
-        const auto yScale = 0.58f + 0.24f * std::sin(fi * 0.17f + rotationPhase);
+        const auto a = fi * 2.39996323f + rotationPhase * (0.12f + (i % 17) * 0.006f);
+        const auto rr = r * (0.91f + 0.29f * hash01(i * 19 + 7));
+        const auto flatten = 0.63f + 0.24f * std::sin(fi * 0.087f + rotationPhase * 0.4f);
         const auto x = c.x + std::cos(a) * rr;
-        const auto y = c.y + std::sin(a) * rr * yScale;
-        const auto size = 0.45f + (i % 11 == 0 ? 1.2f : 0.0f);
-        const auto col = i % 19 == 0 ? gold : (i % 11 == 0 ? cyan : purple);
-        g.setColour(col.withAlpha(0.05f + energy * 0.08f));
+        const auto y = c.y + std::sin(a) * rr * flatten;
+        const auto bright = i % 53 == 0;
+        const auto size = bright ? 2.0f : 0.42f + hash01(i * 7) * 0.65f;
+        const auto col = i % 31 == 0 ? gold : (i % 17 == 0 ? magenta : (i % 13 == 0 ? cyan : purple));
+        g.setColour(col.withAlpha(bright ? 0.40f : 0.045f + activity * 0.025f));
         g.fillEllipse(x - size * 0.5f, y - size * 0.5f, size, size);
     }
 
-    // Atmospheric planet body. Intentionally translucent-looking rather than opaque.
-    juce::ColourGradient body(juce::Colour::fromRGB(42, 12, 68).withAlpha(0.88f),
-                              c.x - r * 0.64f, c.y - r * 0.64f,
-                              juce::Colour::fromRGB(3, 3, 10).withAlpha(0.94f),
-                              c.x + r * 0.80f, c.y + r * 0.80f, true);
-    body.addColour(0.34, juce::Colour::fromRGB(52, 17, 94).withAlpha(0.72f));
-    body.addColour(0.69, juce::Colour::fromRGB(12, 8, 30).withAlpha(0.82f));
+    // Very dark transparent atmosphere. The network must remain the dominant object.
+    juce::ColourGradient body(juce::Colour::fromRGB(35, 10, 60).withAlpha(0.46f),
+                              c.x - r * 0.55f, c.y - r * 0.55f,
+                              juce::Colour::fromRGB(2, 3, 9).withAlpha(0.74f),
+                              c.x + r * 0.84f, c.y + r * 0.82f, true);
+    body.addColour(0.33, juce::Colour::fromRGB(46, 14, 82).withAlpha(0.38f));
+    body.addColour(0.72, juce::Colour::fromRGB(9, 7, 26).withAlpha(0.58f));
     g.setGradientFill(body);
     g.fillEllipse(globe);
 
-    juce::Graphics::ScopedSaveState clipped(g);
-    juce::Path sphereClip;
-    sphereClip.addEllipse(globe);
-    g.reduceClipRegion(sphereClip);
-
-    // Actual 12 DSP breakpoint positions: micro-structure only.
     float totalDuration = 0.0f;
     for (const auto d : visualState.durations)
         totalDuration += juce::jmax(0.001f, d);
@@ -548,249 +615,251 @@ void VeloriaAudioProcessorEditor::drawStochasticGlobe(juce::Graphics& g, juce::R
                          + juce::MathConstants<float>::twoPi
                          * (cumulative / juce::jmax(0.001f, totalDuration));
         cumulative += juce::jmax(0.001f, visualState.durations[i]);
-        const auto radial = r * (0.26f + visualState.amplitudes[i] * 0.12f);
-        const auto depth = 0.72f + 0.20f * std::sin(angle * 2.0f + rotationPhase * 0.61f + i * 0.31f);
+        const auto radial = r * (0.43f + visualState.amplitudes[i] * 0.22f);
+        const auto depth = 0.73f + 0.21f * std::sin(angle * 1.9f + rotationPhase * 0.61f + i * 0.31f);
         points[i] = { c.x + std::cos(angle) * radial,
                       c.y + std::sin(angle) * radial * depth };
     }
 
-    // FIVE MACRO ANCHORS. Their base positions are deliberately spread over the
-    // planet like the reference image; grouped DSP statistics perturb them so they
-    // remain genuinely related to the stochastic state without ever collapsing inward.
     const std::array<juce::Point<float>, 5> baseAnchorNorm {{
-        { -0.48f, -0.32f },
-        {  0.04f, -0.48f },
-        {  0.50f, -0.18f },
-        {  0.34f,  0.39f },
-        { -0.40f,  0.36f }
+        { -0.43f, -0.31f },
+        {  0.05f, -0.49f },
+        {  0.48f, -0.15f },
+        {  0.31f,  0.40f },
+        { -0.40f,  0.35f }
     }};
 
     std::array<juce::Point<float>, 5> anchors {};
     std::array<float, 5> anchorEnergy {};
     for (int a = 0; a < 5; ++a)
     {
-        float ampMean = 0.0f;
-        float durMean = 0.0f;
-        const int start = a * 2;
-        const int count = a < 2 ? 3 : 2;
-        for (int j = 0; j < count; ++j)
-        {
-            const auto idx = (std::size_t) ((start + j) % (int) points.size());
-            ampMean += visualState.amplitudes[idx];
-            durMean += visualState.durations[idx];
-        }
-        ampMean /= (float) count;
-        durMean /= (float) count;
-        const auto jitterX = ampMean * r * (0.055f + aw * 0.040f)
-                           + std::sin(rotationPhase * (0.35f + a * 0.04f) + a * 1.31f)
-                           * r * (0.012f + chaosValue * 0.022f);
-        const auto jitterY = (durMean - 1.0f) * r * 0.020f
-                           + std::cos(rotationPhase * (0.29f + a * 0.05f) + a * 0.77f)
-                           * r * (0.010f + tw * 0.020f);
+        const auto i0 = (std::size_t) ((a * 2) % 12);
+        const auto i1 = (std::size_t) ((a * 2 + 1) % 12);
+        const auto i2 = (std::size_t) ((a * 2 + 5) % 12);
+        const auto ampMean = (visualState.amplitudes[i0] + visualState.amplitudes[i1] + visualState.amplitudes[i2]) / 3.0f;
+        const auto durMean = (visualState.durations[i0] + visualState.durations[i1] + visualState.durations[i2]) / 3.0f;
+        const auto jitterX = ampMean * r * (0.038f + aw * 0.030f)
+                           + std::sin(rotationPhase * (0.30f + a * 0.035f) + a * 1.31f)
+                           * r * (0.009f + chaosValue * 0.018f);
+        const auto jitterY = (durMean - 1.0f) * r * 0.015f
+                           + std::cos(rotationPhase * (0.26f + a * 0.041f) + a * 0.77f)
+                           * r * (0.008f + tw * 0.016f);
         anchors[(std::size_t) a] = {
             c.x + baseAnchorNorm[(std::size_t) a].x * r + jitterX,
             c.y + baseAnchorNorm[(std::size_t) a].y * r + jitterY
         };
         anchorEnergy[(std::size_t) a] = juce::jlimit(0.0f, 1.0f,
-            0.32f + std::abs(ampMean) * 0.48f + energy * 0.20f);
+            0.36f + std::abs(ampMean) * 0.40f + energy * 0.24f);
     }
 
-    // Low-alpha luminous cloud volumes around the five anchors.
-    for (int a = 0; a < 5; ++a)
+    // Secondary luminous hubs are what stop the five anchors reading as a pentagon.
+    std::array<juce::Point<float>, 26> hubs {};
+    for (int h = 0; h < (int) hubs.size(); ++h)
     {
-        const auto& anchor = anchors[(std::size_t) a];
-        const auto e = anchorEnergy[(std::size_t) a];
-        const auto col = a == 0 || a == 3 ? gold : (a == 2 ? cyan : magenta);
-        for (int cloud = 0; cloud < 18; ++cloud)
+        const auto hf = (float) h;
+        const auto bp = points[(std::size_t) (h % 12)];
+        const auto anchor = anchors[(std::size_t) ((h * 3 + 1) % 5)];
+        const auto blend = 0.24f + 0.50f * hash01(h * 29 + 3);
+        auto p = bp * blend + anchor * (1.0f - blend);
+        const auto ang = hf * 2.39996323f + rotationPhase * (0.10f + (h % 7) * 0.013f);
+        const auto rr = r * (0.05f + 0.16f * hash01(h * 31 + 9));
+        p += { std::cos(ang) * rr, std::sin(ang) * rr * (0.62f + hash01(h * 17) * 0.25f) };
+        hubs[(std::size_t) h] = p;
+    }
+
+    {
+        juce::Graphics::ScopedSaveState clipped(g);
+        juce::Path sphereClip;
+        sphereClip.addEllipse(globe);
+        g.reduceClipRegion(sphereClip);
+
+        // Dense deep particle volume across the whole sphere, not clustered around anchors.
+        for (int i = 0; i < 3200; ++i)
         {
-            const auto cf = (float) cloud;
-            const auto ang = cf * 2.39996323f + rotationPhase * (0.11f + a * 0.02f);
-            const auto cr = r * (0.035f + 0.090f * std::sqrt((float) (cloud + 1) / 18.0f));
-            const auto p = anchor + juce::Point<float>(std::cos(ang) * cr, std::sin(ang) * cr * 0.72f);
-            const auto size = r * (0.035f + 0.030f * e);
-            juce::ColourGradient fog(col.withAlpha(0.020f + e * 0.018f), p.x, p.y,
-                                     juce::Colours::transparentBlack, p.x + size, p.y, true);
-            g.setGradientFill(fog);
-            g.fillEllipse(p.x - size, p.y - size, size * 2.0f, size * 2.0f);
+            const auto fi = (float) i;
+            const auto z = std::sin(fi * 0.613f + rotationPhase * (0.13f + tw * 0.23f));
+            const auto near = (z + 1.0f) * 0.5f;
+            const auto radial = std::sqrt(hash01(i * 37 + 11));
+            const auto angle = fi * 2.39996323f
+                             + rotationPhase * (0.08f + (i % 29) * 0.004f)
+                             + std::sin(fi * 0.031f) * chaosValue * 0.33f;
+            const auto turbulence = 1.0f + std::sin(fi * 0.109f + rotationPhase * (0.7f + activity)) * 0.08f;
+            const auto rr = r * radial * turbulence;
+            const auto x = c.x + std::cos(angle) * rr;
+            const auto y = c.y + std::sin(angle) * rr * (0.73f + 0.23f * z);
+            const auto bright = i % 149 == 0;
+            const auto size = bright ? 2.2f : 0.34f + near * 0.95f;
+            auto col = i % 43 == 0 ? gold : (i % 23 == 0 ? magenta : (i % 17 == 0 ? cyan : purple));
+            if (i % 67 == 0)
+                col = col.interpolatedWith(gold, juce::jlimit(0.15f, 0.65f, (ampDistValue + timeDistValue) * 0.08f));
+            g.setColour(col.withAlpha(bright ? 0.55f : 0.034f + near * 0.072f + energy * 0.034f));
+            g.fillEllipse(x - size * 0.5f, y - size * 0.5f, size, size);
         }
-    }
 
-    // Main full-sphere filament web: large curves organized by the five anchors.
-    static constexpr int pairA[10] = { 0,0,0,0,1,1,1,2,2,3 };
-    static constexpr int pairB[10] = { 1,2,3,4,2,3,4,3,4,4 };
-    for (int family = 0; family < 10; ++family)
-    {
-        const auto aIndex = pairA[family];
-        const auto bIndex = pairB[family];
-        const auto p0 = anchors[(std::size_t) aIndex];
-        const auto p3 = anchors[(std::size_t) bIndex];
-        const auto midpoint = (p0 + p3) * 0.5f;
-        auto radial = midpoint - c;
-        auto normal = juce::Point<float>(-radial.y, radial.x);
-        normal /= juce::jmax(1.0f, normal.getDistanceFromOrigin());
-
-        for (int strand = 0; strand < 13; ++strand)
+        // Hundreds of curved trajectories weaving hub-to-hub and anchor-to-hub.
+        for (int strand = 0; strand < 220; ++strand)
         {
-            const auto sf = (float) strand - 6.0f;
-            const auto bend = r * (0.07f + 0.016f * (float) (family % 4))
-                            * (1.0f + chaosValue * 0.55f);
-            const auto phase = rotationPhase * (0.24f + family * 0.011f)
-                             + family * 0.41f + strand * 0.17f;
-            const auto offset = sf * r * 0.0068f;
-            const auto control1 = p0 * 0.68f + midpoint * 0.32f
-                                + normal * (bend + offset + std::sin(phase) * r * 0.018f);
-            const auto control2 = p3 * 0.68f + midpoint * 0.32f
-                                - normal * (bend - offset + std::cos(phase * 0.91f) * r * 0.018f);
-
+            const auto a = strand % 5;
+            const auto h0 = (strand * 7 + 3) % (int) hubs.size();
+            const auto h1 = (strand * 13 + 11) % (int) hubs.size();
+            const auto p0 = strand % 3 == 0 ? anchors[(std::size_t) a] : hubs[(std::size_t) h0];
+            const auto p3 = hubs[(std::size_t) h1];
+            const auto mid = (p0 + p3) * 0.5f;
+            auto tangent = p3 - p0;
+            juce::Point<float> normal(-tangent.y, tangent.x);
+            normal /= juce::jmax(1.0f, normal.getDistanceFromOrigin());
+            auto radial = mid - c;
+            radial /= juce::jmax(1.0f, radial.getDistanceFromOrigin());
+            const auto bend = r * (0.030f + 0.14f * hash01(strand * 19 + 5)) * (0.72f + chaosValue * 0.65f);
+            const auto phase = rotationPhase * (0.11f + (strand % 17) * 0.004f) + strand * 0.31f;
+            const auto cp1 = p0 * 0.66f + mid * 0.34f
+                           + normal * bend + radial * std::sin(phase) * r * 0.035f;
+            const auto cp2 = p3 * 0.66f + mid * 0.34f
+                           - normal * bend + radial * std::cos(phase * 0.87f) * r * 0.035f;
             juce::Path filament;
             filament.startNewSubPath(p0);
-            filament.cubicTo(control1, control2, p3);
-            const auto col = family % 4 == 0 ? gold
-                           : (family % 3 == 0 ? cyan
-                           : (family % 2 == 0 ? magenta : purple));
-            g.setColour(col.withAlpha(0.028f + activity * 0.042f));
-            g.strokePath(filament, juce::PathStrokeType(0.48f + (strand == 6 ? 0.38f : 0.0f),
+            filament.cubicTo(cp1, cp2, p3);
+            const auto col = strand % 19 == 0 ? gold
+                           : (strand % 13 == 0 ? cyan
+                           : (strand % 7 == 0 ? magenta : purple));
+            const auto major = strand % 23 == 0;
+            g.setColour(col.withAlpha((major ? 0.105f : 0.026f) + activity * (major ? 0.045f : 0.022f)));
+            g.strokePath(filament, juce::PathStrokeType(major ? 0.92f : 0.42f,
                                                          juce::PathStrokeType::curved,
                                                          juce::PathStrokeType::rounded));
         }
+
+        // Orbit arcs at many scales. These imply the sphere's curvature.
+        for (int sweep = 0; sweep < 110; ++sweep)
+        {
+            const auto sf = (float) sweep;
+            const auto rx = r * (0.40f + 0.55f * hash01(sweep * 11 + 1));
+            const auto ry = r * (0.13f + 0.67f * hash01(sweep * 13 + 4));
+            const auto rot = rotationPhase * (0.07f + (sweep % 11) * 0.005f) + sf * 0.173f;
+            const auto ox = c.x + (hash01(sweep * 17 + 2) - 0.5f) * r * 0.22f;
+            const auto oy = c.y + (hash01(sweep * 23 + 8) - 0.5f) * r * 0.20f;
+            juce::Path orbit;
+            orbit.addCentredArc(ox, oy, rx, ry, rot,
+                                0.04f, juce::MathConstants<float>::twoPi - 0.04f, true);
+            const auto col = sweep % 17 == 0 ? gold : (sweep % 11 == 0 ? magenta : purple);
+            g.setColour(col.withAlpha(0.014f + activity * 0.020f));
+            g.strokePath(orbit, juce::PathStrokeType(0.38f + (sweep % 29 == 0 ? 0.42f : 0.0f)));
+        }
+
+        // Flowing sparks travel along the broad network rather than exposing its skeleton.
+        for (int family = 0; family < 36; ++family)
+        {
+            const auto p0 = hubs[(std::size_t) ((family * 5 + 1) % (int) hubs.size())];
+            const auto p1 = hubs[(std::size_t) ((family * 11 + 7) % (int) hubs.size())];
+            const auto delta = p1 - p0;
+            juce::Point<float> normal(-delta.y, delta.x);
+            normal /= juce::jmax(1.0f, normal.getDistanceFromOrigin());
+            for (int j = 0; j < 34; ++j)
+            {
+                const auto t = std::fmod((float) j / 34.0f
+                                       + rotationPhase * (0.006f + tw * 0.012f)
+                                       + family * 0.043f, 1.0f);
+                auto p = p0 + delta * t;
+                p += normal * std::sin(t * juce::MathConstants<float>::twoPi * 2.0f
+                                     + family * 0.71f + rotationPhase * 1.7f)
+                   * r * (0.008f + chaosValue * 0.017f);
+                const auto bright = j % 15 == 0;
+                const auto size = bright ? 1.9f : 0.45f + (j % 3) * 0.12f;
+                const auto col = bright ? gold : (family % 4 == 0 ? magenta : purple);
+                g.setColour(col.withAlpha(bright ? 0.52f : 0.055f + activity * 0.055f));
+                g.fillEllipse(p.x - size * 0.5f, p.y - size * 0.5f, size, size);
+            }
+        }
+
+        // Secondary hubs: many bright intersections like the reference.
+        for (int h = 0; h < (int) hubs.size(); ++h)
+        {
+            const auto p = hubs[(std::size_t) h];
+            const auto col = h % 7 == 0 ? gold : (h % 5 == 0 ? cyan : (h % 3 == 0 ? magenta : purple));
+            const auto sz = 1.5f + 1.6f * hash01(h * 19 + 7) + energy * 0.8f;
+            juce::ColourGradient glow(col.withAlpha(0.18f), p.x, p.y,
+                                      juce::Colours::transparentBlack, p.x + sz * 5.0f, p.y, true);
+            g.setGradientFill(glow);
+            g.fillEllipse(p.x - sz * 5.0f, p.y - sz * 5.0f, sz * 10.0f, sz * 10.0f);
+            g.setColour(col.withAlpha(0.82f));
+            g.fillEllipse(p.x - sz * 0.5f, p.y - sz * 0.5f, sz, sz);
+        }
+
+        // True DSP breakpoints remain recognizable but are only one layer of the field.
+        for (std::size_t i = 0; i < points.size(); ++i)
+        {
+            const auto amp = std::abs(visualState.amplitudes[i]);
+            const auto nr = 1.6f + amp * 1.8f + energy * 0.3f;
+            const auto col = i % 4 == 0 ? gold : (i % 3 == 0 ? cyan : magenta);
+            g.setColour(col.withAlpha(0.10f + amp * 0.06f));
+            g.fillEllipse(points[i].x - nr * 3.0f, points[i].y - nr * 3.0f, nr * 6.0f, nr * 6.0f);
+            g.setColour(col.withAlpha(0.92f));
+            g.fillEllipse(points[i].x - nr, points[i].y - nr, nr * 2.0f, nr * 2.0f);
+        }
+
+        // Five macro anchors: luminous event centres, no visible pentagon geometry.
+        for (int a = 0; a < 5; ++a)
+        {
+            const auto anchor = anchors[(std::size_t) a];
+            const auto e = anchorEnergy[(std::size_t) a];
+            const auto col = a == 0 || a == 3 ? gold : (a == 2 ? cyan : magenta);
+            const auto core = r * (0.010f + 0.009f * e);
+
+            for (int p = 0; p < 120; ++p)
+            {
+                const auto pf = (float) p;
+                const auto angle = pf * 2.39996323f + rotationPhase * (0.28f + a * 0.045f);
+                const auto rr = r * (0.009f + 0.105f * std::sqrt((float) (p + 1) / 120.0f))
+                              * (0.55f + e * 0.70f);
+                const auto q = anchor + juce::Point<float>(std::cos(angle) * rr,
+                                                            std::sin(angle) * rr * 0.72f);
+                const auto size = p % 21 == 0 ? 1.7f : 0.40f + hash01(p * 13 + a) * 0.50f;
+                g.setColour(col.withAlpha(0.035f + e * 0.060f));
+                g.fillEllipse(q.x - size * 0.5f, q.y - size * 0.5f, size, size);
+            }
+
+            juce::ColourGradient anchorGlow(col.withAlpha(0.24f + e * 0.16f), anchor.x, anchor.y,
+                                            juce::Colours::transparentBlack, anchor.x + core * 6.0f, anchor.y, true);
+            g.setGradientFill(anchorGlow);
+            g.fillEllipse(anchor.x - core * 6.0f, anchor.y - core * 6.0f,
+                          core * 12.0f, core * 12.0f);
+            g.setColour(col.withAlpha(0.96f));
+            g.fillEllipse(anchor.x - core, anchor.y - core, core * 2.0f, core * 2.0f);
+            g.setColour(juce::Colours::white.withAlpha(0.94f));
+            g.fillEllipse(anchor.x - 1.2f, anchor.y - 1.2f, 2.4f, 2.4f);
+        }
+
+        // Very light limb shading only.
+        juce::ColourGradient limb(juce::Colours::transparentBlack,
+                                  c.x - r * 0.50f, c.y - r * 0.35f,
+                                  juce::Colours::black.withAlpha(0.12f),
+                                  c.x + r * 0.98f, c.y + r * 0.90f, false);
+        g.setGradientFill(limb);
+        g.fillEllipse(globe);
     }
 
-    // Additional sweeping orbit filaments crossing the entire sphere.
-    for (int sweep = 0; sweep < 64; ++sweep)
-    {
-        const auto sf = (float) sweep;
-        const auto rx = r * (0.52f + 0.42f * (0.5f + 0.5f * std::sin(sf * 0.71f)));
-        const auto ry = r * (0.18f + 0.58f * (0.5f + 0.5f * std::cos(sf * 0.43f)));
-        const auto rot = rotationPhase * (0.10f + (sweep % 9) * 0.006f) + sf * 0.193f;
-        juce::Path orbit;
-        orbit.addCentredArc(c.x, c.y, rx, ry, rot,
-                            0.03f, juce::MathConstants<float>::twoPi - 0.03f, true);
-        const auto col = sweep % 13 == 0 ? gold : (sweep % 7 == 0 ? cyan : purple);
-        g.setColour(col.withAlpha(0.012f + activity * 0.026f));
-        g.strokePath(orbit, juce::PathStrokeType(0.42f));
-    }
-
-    // Particle volume: deliberately bright enough to remain visible even at idle.
-    const int particleCount = 3000;
-    for (int i = 0; i < particleCount; ++i)
+    // Foreground particles and arcs cross the limb, adding the reference's depth.
+    for (int i = 0; i < 460; ++i)
     {
         const auto fi = (float) i;
-        const auto anchorIndex = i % 5;
-        const auto anchor = anchors[(std::size_t) anchorIndex];
-        const auto z = std::sin(fi * 0.619f
-                              + rotationPhase * (0.19f + tw * 0.36f)
-                              + std::sin(fi * 0.071f) * chaosValue);
-        const auto near = (z + 1.0f) * 0.5f;
-        const auto angle = fi * 2.39996323f
-                         + rotationPhase * (0.13f + (i % 23) * 0.006f)
-                         + anchorIndex * 0.83f;
-        const auto localNorm = std::sqrt((float) ((i * 97) % 2999) / 2999.0f);
-        const auto localR = r * (0.045f + localNorm * 0.42f);
-        const auto anchorPull = 0.48f + 0.18f * std::sin(fi * 0.037f + rotationPhase);
-        auto p = c * (1.0f - anchorPull) + anchor * anchorPull;
-        p.x += std::cos(angle) * localR * (0.76f + 0.24f * near);
-        p.y += std::sin(angle) * localR * (0.50f + 0.28f * near);
-
-        const auto globalDrift = std::sin(fi * 0.113f + rotationPhase * (0.9f + activity * 1.4f));
-        p += juce::Point<float>(globalDrift * r * 0.016f * ampStepValue,
-                                std::cos(fi * 0.091f + rotationPhase) * r * 0.014f * timeStepValue);
-
-        const auto size = 0.38f + near * 1.10f + (i % 137 == 0 ? 1.55f : 0.0f);
-        auto col = i % 37 == 0 ? gold
-                 : (i % 19 == 0 ? cyan
-                 : (i % 11 == 0 ? magenta : purple));
-        const auto distBias = juce::jlimit(0.0f, 1.0f, (ampDistValue + timeDistValue) / 10.0f);
-        if (i % 53 == 0)
-            col = col.interpolatedWith(gold, 0.24f + distBias * 0.42f);
-
-        const auto alpha = 0.040f + near * 0.070f + activity * 0.055f;
-        g.setColour(col.withAlpha(alpha));
-        g.fillEllipse(p.x - size * 0.5f, p.y - size * 0.5f, size, size);
+        const auto a = fi * 2.39996323f + rotationPhase * (0.16f + (i % 19) * 0.006f);
+        const auto rr = r * (0.72f + 0.42f * hash01(i * 23 + 5));
+        const auto x = c.x + std::cos(a) * rr;
+        const auto y = c.y + std::sin(a) * rr * (0.64f + 0.26f * std::sin(fi * 0.071f));
+        const auto bright = i % 61 == 0;
+        const auto size = bright ? 2.4f : 0.50f + hash01(i * 11 + 2) * 0.80f;
+        const auto col = i % 29 == 0 ? gold : (i % 17 == 0 ? cyan : (i % 13 == 0 ? magenta : purple));
+        g.setColour(col.withAlpha(bright ? 0.64f : 0.055f + energy * 0.045f));
+        g.fillEllipse(x - size * 0.5f, y - size * 0.5f, size, size);
     }
 
-    // Flowing spark streams between macro anchors.
-    for (int family = 0; family < 10; ++family)
-    {
-        const auto p0 = anchors[(std::size_t) pairA[family]];
-        const auto p1 = anchors[(std::size_t) pairB[family]];
-        const auto delta = p1 - p0;
-        auto normal = juce::Point<float>(-delta.y, delta.x);
-        normal /= juce::jmax(1.0f, normal.getDistanceFromOrigin());
-        for (int j = 0; j < 64; ++j)
-        {
-            const auto t = std::fmod((float) j / 64.0f
-                                   + rotationPhase * (0.009f + tw * 0.014f)
-                                   + family * 0.067f, 1.0f);
-            auto p = p0 + delta * t;
-            const auto wave = std::sin(t * juce::MathConstants<float>::twoPi * 2.0f
-                                     + family * 0.61f + rotationPhase * 1.9f);
-            p += normal * wave * r * (0.015f + chaosValue * 0.026f);
-            const auto spark = j % 17 == 0;
-            const auto size = spark ? 2.3f : 0.55f + (j % 4) * 0.12f;
-            const auto col = spark ? gold : (family % 3 == 0 ? magenta : purple);
-            g.setColour(col.withAlpha(spark ? 0.48f : 0.075f + activity * 0.075f));
-            g.fillEllipse(p.x - size * 0.5f, p.y - size * 0.5f, size, size);
-        }
-    }
-
-    // 12 true breakpoints: smaller than macro anchors, visually unmistakable as micro nodes.
-    for (std::size_t i = 0; i < points.size(); ++i)
-    {
-        const auto amp = std::abs(visualState.amplitudes[i]);
-        const auto nr = 1.7f + amp * 1.9f + energy * 0.35f;
-        const auto col = i % 4 == 0 ? gold : (i % 3 == 0 ? cyan : magenta);
-        g.setColour(col.withAlpha(0.08f + amp * 0.07f));
-        g.fillEllipse(points[i].x - nr * 2.5f, points[i].y - nr * 2.5f, nr * 5.0f, nr * 5.0f);
-        g.setColour(col.withAlpha(0.88f));
-        g.fillEllipse(points[i].x - nr, points[i].y - nr, nr * 2.0f, nr * 2.0f);
-    }
-
-    // Five macro anchor storms: the dominant reference points from the target visual.
-    for (int a = 0; a < 5; ++a)
-    {
-        const auto anchor = anchors[(std::size_t) a];
-        const auto e = anchorEnergy[(std::size_t) a];
-        const auto col = a == 0 || a == 3 ? gold : (a == 2 ? cyan : magenta);
-        const auto core = r * (0.018f + 0.014f * e);
-
-        for (int p = 0; p < 96; ++p)
-        {
-            const auto pf = (float) p;
-            const auto angle = pf * 2.39996323f + rotationPhase * (0.42f + a * 0.06f);
-            const auto rr = r * (0.012f + 0.13f * std::sqrt((float) (p + 1) / 96.0f))
-                          * (0.58f + e * 0.62f);
-            const auto q = anchor + juce::Point<float>(std::cos(angle) * rr,
-                                                        std::sin(angle) * rr * 0.72f);
-            const auto size = 0.45f + (p % 13 == 0 ? 1.4f : 0.0f);
-            g.setColour(col.withAlpha(0.040f + e * 0.075f));
-            g.fillEllipse(q.x - size * 0.5f, q.y - size * 0.5f, size, size);
-        }
-
-        juce::ColourGradient anchorGlow(col.withAlpha(0.28f + e * 0.20f), anchor.x, anchor.y,
-                                        juce::Colours::transparentBlack, anchor.x + core * 4.6f, anchor.y, true);
-        g.setGradientFill(anchorGlow);
-        g.fillEllipse(anchor.x - core * 4.6f, anchor.y - core * 4.6f,
-                      core * 9.2f, core * 9.2f);
-        g.setColour(col.withAlpha(0.96f));
-        g.fillEllipse(anchor.x - core, anchor.y - core, core * 2.0f, core * 2.0f);
-        g.setColour(juce::Colours::white.withAlpha(0.95f));
-        g.fillEllipse(anchor.x - 1.4f, anchor.y - 1.4f, 2.8f, 2.8f);
-    }
-
-    // Gentle spherical shading only; never bury the particle system.
-    juce::ColourGradient limb(juce::Colours::transparentBlack,
-                              c.x - r * 0.46f, c.y - r * 0.32f,
-                              juce::Colours::black.withAlpha(0.22f),
-                              c.x + r * 0.95f, c.y + r * 0.88f, false);
-    g.setGradientFill(limb);
-    g.fillEllipse(globe);
-
-    g.setColour(cyan.withAlpha(0.12f + energy * 0.05f));
-    g.drawEllipse(globe, 0.9f);
-    g.setColour(purple.withAlpha(0.16f));
-    g.drawEllipse(globe.reduced(3.0f), 0.65f);
-    g.setColour(gold.withAlpha(0.055f + chaosValue * 0.035f));
-    g.drawEllipse(globe.reduced(7.0f), 0.50f);
+    // Multiple faint rims, not a solid circumference.
+    g.setColour(cyan.withAlpha(0.075f + energy * 0.035f));
+    g.drawEllipse(globe, 0.65f);
+    g.setColour(purple.withAlpha(0.11f));
+    g.drawEllipse(globe.reduced(2.5f), 0.55f);
+    g.setColour(gold.withAlpha(0.035f + chaosValue * 0.025f));
+    g.drawEllipse(globe.reduced(6.0f), 0.45f);
 }
 
 void VeloriaAudioProcessorEditor::resized()
