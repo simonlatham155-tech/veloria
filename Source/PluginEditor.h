@@ -42,6 +42,7 @@ private:
     void configureFieldSlider(MidiLearnSlider&, const juce::String& parameterId, const juce::String& displayName);
     void refreshPresetBox(const juce::String& selectUserPreset = {});
     bool selectedPresetIsUser() const noexcept;
+    void refreshOrderButton();
 
     VeloriaAudioProcessor& audioProcessor;
     VeloriaAudioProcessor::VisualState visualState;
@@ -49,12 +50,13 @@ private:
 
     MidiLearnSlider ampWalk, timeWalk, ampMirror, timeMirror;
     MidiLearnSlider ampDist, timeDist, ampStep, timeStep;
-    MidiLearnSlider walkOrder, breakpoints, pitchStability, curve;
+    MidiLearnSlider chaos, breakpoints, pitchStability, curve;
     MidiLearnSlider attack, decay, sustain, release;
     MidiLearnSlider seed, level;
 
     juce::ComboBox presetBox;
     juce::ToggleButton monoButton { "MONO" };
+    juce::TextButton orderButton { "ORDER 2" };
     juce::TextButton discoverButton { "DISCOVER" };
     juce::TextButton newFieldButton { "NEW FIELD" };
     juce::TextButton savePresetButton { "SAVE" };
@@ -69,7 +71,7 @@ private:
     std::unique_ptr<SliderAttachment> ampWalkAttachment, timeWalkAttachment,
         ampMirrorAttachment, timeMirrorAttachment;
     std::unique_ptr<SliderAttachment> ampDistAttachment, timeDistAttachment,
-        ampStepAttachment, timeStepAttachment, walkOrderAttachment,
+        ampStepAttachment, timeStepAttachment, chaosAttachment,
         breakpointsAttachment, pitchStabilityAttachment, curveAttachment;
     std::unique_ptr<SliderAttachment> attackAttachment, decayAttachment,
         sustainAttachment, releaseAttachment, seedAttachment, levelAttachment;
