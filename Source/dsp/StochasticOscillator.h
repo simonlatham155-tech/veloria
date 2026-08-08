@@ -7,15 +7,6 @@
 
 namespace veloria::dsp
 {
-// Veloria dynamic stochastic synthesis core.
-//
-// One tuned cycle is a polygon whose amplitude and duration breakpoints evolve
-// through cascaded reflected random walks.  The oscillator deliberately keeps
-// pitch normalisation outside the stochastic geometry: MIDI pitch remains a
-// musical contract while the waveform itself is free to evolve.
-//
-// This is the Mk-I philosophy: probability is part of the oscillator, not an
-// LFO bolted onto a conventional waveform.
 class StochasticOscillator
 {
 public:
@@ -23,7 +14,7 @@ public:
 
     enum class Distribution
     {
-        adaptive,   // musical default: smooth at small walks, heavier tails as energy rises
+        adaptive,
         uniform,
         gaussian,
         logistic,
@@ -55,6 +46,17 @@ public:
     void setTimeMirror(float value) noexcept { timeMirror = juce::jlimit(0.05f, 1.0f, value); }
     void setAmplitudeDistribution(Distribution value) noexcept { amplitudeDistribution = value; }
     void setTimeDistribution(Distribution value) noexcept { timeDistribution = value; }
+    void setAmplitudeStepScale(float value) noexcept { amplitudeStepScale = juce::jlimit(0.10f, 2.0f, value); }
+    void setTimeStepScale(float value) noexcept { timeStepScale = juce::jlimit(0.10f, 2.0f, value); }
+    void setWalkOrder(int value) noexcept { walkOrder = juce::jlimit(1, 2, value); }
+    void setActiveBreakpointCount(int value) noexcept
+    {
+        activeBreakpointCount = static_cast<std::size_t>(juce::jlimit(4, static_cast<int>(numBreakpoints), value));
+        if (segmentIndex >= activeBreakpointCount)
+            segmentIndex = 0;
+    }
+    void setPitchStability(float value) noexcept { pitchStability = juce::jlimit(0.0f, 1.0f, value); }
+    void setInterpolationShape(float value) noexcept { interpolationShape = juce::jlimit(0.0f, 1.0f, value); }
 
     void setSeed(std::uint32_t newSeed) noexcept
     {
@@ -73,14 +75,25 @@ public:
 
     [[nodiscard]] float processSample() noexcept
     {
-        const auto nextIndex = (segmentIndex + 1) % numBreakpoints;
-        const auto t = static_cast<float>(segmentPhase);
+        const auto count = juce::jmax<std::size_t>(4, activeBreakpointCount);
+        if (segmentIndex >= count)
+            segmentIndex = 0;
+
+        const auto nextIndex = (segmentIndex + 1) % count;
+        const auto rawT = static_cast<float>(segmentPhase);
+        const auto smoothT = rawT * rawT * (3.0f - 2.0f * rawT);
+        const auto t = juce::jmap(interpolationShape, rawT, smoothT);
         const auto output = amplitudes[segmentIndex]
                           + (amplitudes[nextIndex] - amplitudes[segmentIndex]) * t;
 
         const auto totalDuration = durationSum();
         const auto normalisedDuration = durations[segmentIndex] / totalDuration;
-        const auto cyclesPerSample = static_cast<double>(frequency) / sampleRate;
+
+        // Stability=1 keeps the keyboard pitch strictly normalised. Lower values
+        // progressively allow the changing duration field to pull the cycle rate.
+        const auto driftRatio = static_cast<float>(count) / juce::jmax(0.001f, totalDuration);
+        const auto pitchRatio = juce::jmap(pitchStability, driftRatio, 1.0f);
+        const auto cyclesPerSample = static_cast<double>(frequency * pitchRatio) / sampleRate;
         const auto segmentIncrement = cyclesPerSample
                                     / juce::jmax(1.0e-8, static_cast<double>(normalisedDuration));
 
@@ -112,21 +125,35 @@ private:
 
     void evolveBreakpoint(std::size_t index) noexcept
     {
-        const auto maxAmpStep = juce::jmap(amplitudeWalk, 0.0002f, 0.24f);
-        const auto maxTimeStep = juce::jmap(timeWalk, 0.0002f, 0.20f);
+        const auto maxAmpStep = juce::jmap(amplitudeWalk, 0.0002f, 0.24f) * amplitudeStepScale;
+        const auto maxTimeStep = juce::jmap(timeWalk, 0.0002f, 0.20f) * timeStepScale;
 
-        // Second-order behaviour: probability changes the velocity of the walk,
-        // and that evolving velocity moves the breakpoint.  This gives Veloria
-        // memory/continuity instead of unrelated random waveform replacement.
+        const auto ampRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
+        const auto timeRandom = distributedRandom(timeDistribution, timeWalk);
+
+        if (walkOrder == 1)
+        {
+            amplitudes[index] = reflect(
+                amplitudes[index] + ampRandom * maxAmpStep,
+                -amplitudeMirror,
+                amplitudeMirror);
+
+            const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
+            const auto maximumDuration = 1.0f + timeMirror * 2.75f;
+            durations[index] = reflect(
+                durations[index] + timeRandom * maxTimeStep,
+                minimumDuration,
+                maximumDuration);
+            return;
+        }
+
         amplitudeStepState[index] = reflect(
-            amplitudeStepState[index]
-                + distributedRandom(amplitudeDistribution, amplitudeWalk) * maxAmpStep * 0.35f,
+            amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f,
             -maxAmpStep,
             maxAmpStep);
 
         timeStepState[index] = reflect(
-            timeStepState[index]
-                + distributedRandom(timeDistribution, timeWalk) * maxTimeStep * 0.35f,
+            timeStepState[index] + timeRandom * maxTimeStep * 0.35f,
             -maxTimeStep,
             maxTimeStep);
 
@@ -146,8 +173,8 @@ private:
     [[nodiscard]] float durationSum() const noexcept
     {
         float total = 0.0f;
-        for (const auto duration : durations)
-            total += duration;
+        for (std::size_t i = 0; i < activeBreakpointCount; ++i)
+            total += durations[i];
         return juce::jmax(0.001f, total);
     }
 
@@ -158,7 +185,6 @@ private:
 
     [[nodiscard]] float gaussianBipolar() noexcept
     {
-        // Irwin-Hall approximation: strongly favours small organic movements.
         float sum = 0.0f;
         for (int i = 0; i < 6; ++i)
             sum += uniformBipolar();
@@ -189,9 +215,6 @@ private:
     {
         if (distribution == Distribution::adaptive)
         {
-            // Small walks favour natural, correlated micro-motion (pads, strings,
-            // bass sustain).  As the stochastic energy opens up, tails become
-            // progressively more adventurous (FX and percussion territory).
             if (walkEnergy < 0.09f)
                 distribution = Distribution::gaussian;
             else if (walkEnergy < 0.30f)
@@ -238,12 +261,18 @@ private:
     double sampleRate { 44100.0 };
     double segmentPhase { 0.0 };
     std::size_t segmentIndex { 0 };
+    std::size_t activeBreakpointCount { numBreakpoints };
 
     float frequency { 220.0f };
     float amplitudeWalk { 0.12f };
     float timeWalk { 0.08f };
     float amplitudeMirror { 0.88f };
     float timeMirror { 0.45f };
+    float amplitudeStepScale { 1.0f };
+    float timeStepScale { 1.0f };
+    float pitchStability { 1.0f };
+    float interpolationShape { 0.0f };
+    int walkOrder { 2 };
     Distribution amplitudeDistribution { Distribution::adaptive };
     Distribution timeDistribution { Distribution::adaptive };
     std::uint32_t seed { 1u };
