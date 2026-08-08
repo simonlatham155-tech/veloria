@@ -12,7 +12,7 @@ const std::array<VeloriaAudioProcessor::FactoryPreset, 10> VeloriaAudioProcessor
     { "Bell",        0.07f, 0.018f,0.84f, 0.22f, 0.002f,1.45f, 0.02f, 1.10f, 8609 },
     { "Pluck",       0.10f, 0.04f, 0.76f, 0.26f, 0.002f,0.32f, 0.04f, 0.25f, 9719 },
     { "FX",          0.55f, 0.50f, 1.00f, 0.95f, 0.04f, 1.00f, 0.60f, 3.20f,10831 },
-    { "Drums",       0.36f, 0.24f, 0.94f, 0.72f, 0.001f,0.16f, 0.00f, 0.07f,11939 }
+    { "Drums",       0.62f, 0.52f, 0.96f, 0.86f, 0.001f,0.20f, 0.00f, 0.05f,11939 }
 }};
 
 const std::array<const char*, VeloriaAudioProcessor::midiLearnParameterCount>
@@ -51,15 +51,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::creat
 
 void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    currentSampleRate = juce::jmax(1.0, sampleRate);
+
     for (auto& voice : voices)
     {
-        voice.oscillator.prepare(sampleRate);
-        voice.envelope.setSampleRate(sampleRate);
+        voice.oscillator.prepare(currentSampleRate);
+        voice.envelope.setSampleRate(currentSampleRate);
         voice.active = false;
+        voice.percussion = false;
+        voice.drumKind = DrumKind::none;
         voice.midiNote = -1;
     }
 
-    outputGain.prepare({ sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
+    outputGain.prepare({ currentSampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
     updateVoiceParameters();
     publishVisualState(0.0f);
 }
@@ -93,19 +97,76 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             stopAllVoices(false);
     }
 
-    const auto voiceGain = 0.52f / std::sqrt(static_cast<float>(maxVoices));
+    const auto voiceGain = 0.58f / std::sqrt(static_cast<float>(maxVoices));
     double energyAccumulator = 0.0;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         float mixed = 0.0f;
+
         for (auto& voice : voices)
         {
             if (! voice.active)
                 continue;
 
+            if (voice.percussion)
+            {
+                const auto length = juce::jmax<std::uint64_t>(1, voice.percussionLengthSamples);
+                const auto age = juce::jmin(voice.percussionSample, length);
+                const auto progress = juce::jlimit(0.0f, 1.0f,
+                    static_cast<float>(age) / static_cast<float>(length));
+                const auto remaining = juce::jmax(0.0f, 1.0f - progress);
+
+                // Brown/McIlwain-style stochastic percussion behaviour:
+                // begin with large amplitude/time random walks, then contract
+                // the stochastic step sizes toward a stable state during the hit.
+                const auto contraction = std::pow(remaining, voice.contractionPower);
+                const auto ampWalk = voice.endAmpWalk
+                    + (voice.startAmpWalk - voice.endAmpWalk) * contraction;
+                const auto timeWalk = voice.endTimeWalk
+                    + (voice.startTimeWalk - voice.endTimeWalk) * contraction;
+
+                voice.oscillator.setAmplitudeWalk(ampWalk);
+                voice.oscillator.setTimeWalk(timeWalk);
+                voice.oscillator.setAmplitudeMirror(voice.amplitudeMirror);
+                voice.oscillator.setTimeMirror(voice.timeMirror);
+
+                const auto pitchShape = std::pow(remaining, voice.pitchPower);
+                const auto frequency = voice.endFrequency
+                    + (voice.startFrequency - voice.endFrequency) * pitchShape;
+                voice.oscillator.setFrequency(frequency);
+
+                float env = 0.0f;
+                const auto attack = juce::jmax<std::uint64_t>(1, voice.percussionAttackSamples);
+                if (age < attack)
+                {
+                    env = static_cast<float>(age) / static_cast<float>(attack);
+                }
+                else
+                {
+                    const auto decayLength = juce::jmax<std::uint64_t>(1, length - attack);
+                    const auto decayAge = juce::jmin(age - attack, decayLength);
+                    const auto decayProgress = static_cast<float>(decayAge)
+                        / static_cast<float>(decayLength);
+                    env = std::pow(juce::jmax(0.0f, 1.0f - decayProgress), voice.decayPower);
+                }
+
+                mixed += voice.oscillator.processSample() * env * voice.gain * voiceGain;
+
+                ++voice.percussionSample;
+                if (voice.percussionSample >= length)
+                {
+                    voice.active = false;
+                    voice.percussion = false;
+                    voice.drumKind = DrumKind::none;
+                    voice.midiNote = -1;
+                }
+
+                continue;
+            }
+
             const auto env = voice.envelope.getNextSample();
-            mixed += voice.oscillator.processSample() * env * voiceGain;
+            mixed += voice.oscillator.processSample() * env * voice.gain * voiceGain;
 
             if (! voice.envelope.isActive())
             {
@@ -129,16 +190,25 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     publishVisualState(juce::jlimit(0.0f, 1.0f, rms * 5.0f));
 }
 
-void VeloriaAudioProcessor::startNote(int midiNote, float)
+void VeloriaAudioProcessor::startNote(int midiNote, float velocity)
 {
+    if (drumMode)
+    {
+        startDrumNote(midiNote, velocity);
+        return;
+    }
+
     const auto mono = parameters.getRawParameterValue("mono")->load() > 0.5f;
     if (mono)
         stopAllVoices(false);
 
     auto& voice = mono ? voices.front() : findVoiceToStart();
     voice.active = true;
+    voice.percussion = false;
+    voice.drumKind = DrumKind::none;
     voice.midiNote = midiNote;
     voice.age = ++voiceCounter;
+    voice.gain = 0.70f + juce::jlimit(0.0f, 1.0f, velocity) * 0.30f;
 
     const auto baseSeed = static_cast<std::uint32_t>(parameters.getRawParameterValue("seed")->load());
     const auto voiceIndex = static_cast<std::uint32_t>(&voice - voices.data());
@@ -146,12 +216,294 @@ void VeloriaAudioProcessor::startNote(int midiNote, float)
 
     voice.oscillator.setSeed(derivedSeed == 0 ? 1u : derivedSeed);
     voice.oscillator.setFrequency(static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNote)));
+    voice.oscillator.setAmplitudeWalk(parameters.getRawParameterValue("ampWalk")->load());
+    voice.oscillator.setTimeWalk(parameters.getRawParameterValue("timeWalk")->load());
+    voice.oscillator.setAmplitudeMirror(parameters.getRawParameterValue("ampMirror")->load());
+    voice.oscillator.setTimeMirror(parameters.getRawParameterValue("timeMirror")->load());
     voice.envelope.reset();
     voice.envelope.noteOn();
 }
 
+void VeloriaAudioProcessor::startDrumNote(int midiNote, float velocity)
+{
+    auto trigger = [this, midiNote, velocity](DrumKind kind, int layerIndex = 0)
+    {
+        auto& voice = findVoiceToStart();
+        configureDrumVoice(voice, kind, midiNote, velocity, layerIndex);
+    };
+
+    // General MIDI positions make the kit immediately playable from a keyboard.
+    // The sound generation remains entirely stochastic/GENDYN-derived.
+    switch (midiNote)
+    {
+        case 35:
+        case 36: // C1 - kick
+            trigger(DrumKind::kick);
+            break;
+
+        case 38:
+        case 40: // D1 / E1 - snare: membrane + wire populations
+            trigger(DrumKind::snareBody, 0);
+            trigger(DrumKind::snareWire, 1);
+            break;
+
+        case 42:
+        case 44: // F#1 / G#1 - closed/pedal hat
+            trigger(DrumKind::closedHat);
+            break;
+
+        case 46: // A#1 - open hat
+            trigger(DrumKind::openHat);
+            break;
+
+        case 49:
+        case 51: // C#2 / D#2 - crash/ride family
+            trigger(DrumKind::crash);
+            break;
+
+        case 41:
+        case 43:
+        case 45:
+        case 47:
+        case 48:
+        case 50:
+            trigger(DrumKind::tom);
+            break;
+
+        default:
+        {
+            // Keep the rest of the keyboard percussive instead of falling back to
+            // ordinary pitched synthesis while the Drums preset is selected.
+            const auto pitchClass = midiNote % 12;
+            if (pitchClass == 0 || pitchClass == 5)
+                trigger(DrumKind::kick);
+            else if (pitchClass == 2 || pitchClass == 4)
+            {
+                trigger(DrumKind::snareBody, 0);
+                trigger(DrumKind::snareWire, 1);
+            }
+            else if (pitchClass == 6 || pitchClass == 8)
+                trigger(DrumKind::closedHat);
+            else if (pitchClass == 10)
+                trigger(DrumKind::openHat);
+            else if (pitchClass == 1 || pitchClass == 3)
+                trigger(DrumKind::crash);
+            else
+                trigger(DrumKind::tom);
+            break;
+        }
+    }
+}
+
+void VeloriaAudioProcessor::configureDrumVoice(Voice& voice,
+                                                DrumKind kind,
+                                                int midiNote,
+                                                float velocity,
+                                                int layerIndex)
+{
+    voice.active = true;
+    voice.percussion = true;
+    voice.drumKind = kind;
+    voice.midiNote = midiNote;
+    voice.age = ++voiceCounter;
+    voice.percussionSample = 0;
+
+    float durationSeconds = 0.30f;
+    float attackMs = 0.7f;
+    float startAmpWalk = 0.70f;
+    float endAmpWalk = 0.02f;
+    float startTimeWalk = 0.55f;
+    float endTimeWalk = 0.015f;
+    float ampMirror = 0.92f;
+    float timeMirror = 0.72f;
+    float startFrequency = 220.0f;
+    float endFrequency = 180.0f;
+    float contractionPower = 2.5f;
+    float pitchPower = 2.0f;
+    float decayPower = 2.0f;
+    float level = 1.0f;
+
+    switch (kind)
+    {
+        case DrumKind::kick:
+            durationSeconds = 0.52f;
+            attackMs = 0.45f;
+            startAmpWalk = 0.58f;
+            endAmpWalk = 0.008f;
+            startTimeWalk = 0.34f;
+            endTimeWalk = 0.004f;
+            ampMirror = 0.80f;
+            timeMirror = 0.36f;
+            startFrequency = 126.0f;
+            endFrequency = 48.0f;
+            contractionPower = 3.8f;
+            pitchPower = 4.2f;
+            decayPower = 2.6f;
+            level = 1.45f;
+            break;
+
+        case DrumKind::snareBody:
+            durationSeconds = 0.42f;
+            attackMs = 0.45f;
+            startAmpWalk = 0.66f;
+            endAmpWalk = 0.018f;
+            startTimeWalk = 0.42f;
+            endTimeWalk = 0.010f;
+            ampMirror = 0.90f;
+            timeMirror = 0.55f;
+            startFrequency = 285.0f;
+            endFrequency = 175.0f;
+            contractionPower = 3.0f;
+            pitchPower = 2.8f;
+            decayPower = 2.1f;
+            level = 0.95f;
+            break;
+
+        case DrumKind::snareWire:
+            durationSeconds = 0.50f;
+            attackMs = 0.25f;
+            startAmpWalk = 0.98f;
+            endAmpWalk = 0.10f;
+            startTimeWalk = 0.88f;
+            endTimeWalk = 0.065f;
+            ampMirror = 1.00f;
+            timeMirror = 0.96f;
+            startFrequency = 1850.0f;
+            endFrequency = 980.0f;
+            contractionPower = 2.0f;
+            pitchPower = 1.6f;
+            decayPower = 2.4f;
+            level = 0.72f;
+            break;
+
+        case DrumKind::closedHat:
+            durationSeconds = 0.115f;
+            attackMs = 0.16f;
+            startAmpWalk = 1.00f;
+            endAmpWalk = 0.14f;
+            startTimeWalk = 0.94f;
+            endTimeWalk = 0.10f;
+            ampMirror = 1.00f;
+            timeMirror = 0.98f;
+            startFrequency = 7600.0f;
+            endFrequency = 5200.0f;
+            contractionPower = 4.0f;
+            pitchPower = 1.4f;
+            decayPower = 3.0f;
+            level = 0.72f;
+            break;
+
+        case DrumKind::openHat:
+            durationSeconds = 0.72f;
+            attackMs = 0.18f;
+            startAmpWalk = 0.98f;
+            endAmpWalk = 0.07f;
+            startTimeWalk = 0.92f;
+            endTimeWalk = 0.045f;
+            ampMirror = 1.00f;
+            timeMirror = 0.98f;
+            startFrequency = 7100.0f;
+            endFrequency = 4300.0f;
+            contractionPower = 1.8f;
+            pitchPower = 1.2f;
+            decayPower = 1.65f;
+            level = 0.66f;
+            break;
+
+        case DrumKind::crash:
+            durationSeconds = 1.85f;
+            attackMs = 0.25f;
+            startAmpWalk = 1.00f;
+            endAmpWalk = 0.075f;
+            startTimeWalk = 0.98f;
+            endTimeWalk = 0.055f;
+            ampMirror = 1.00f;
+            timeMirror = 1.00f;
+            startFrequency = 4700.0f;
+            endFrequency = 2500.0f;
+            contractionPower = 1.35f;
+            pitchPower = 1.0f;
+            decayPower = 1.28f;
+            level = 0.68f;
+            break;
+
+        case DrumKind::tom:
+            durationSeconds = 0.46f;
+            attackMs = 0.40f;
+            startAmpWalk = 0.50f;
+            endAmpWalk = 0.012f;
+            startTimeWalk = 0.30f;
+            endTimeWalk = 0.008f;
+            ampMirror = 0.82f;
+            timeMirror = 0.42f;
+            startFrequency = juce::jlimit(95.0f, 310.0f,
+                static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(midiNote)) * 0.72f);
+            endFrequency = startFrequency * 0.62f;
+            contractionPower = 3.2f;
+            pitchPower = 3.0f;
+            decayPower = 2.3f;
+            level = 1.00f;
+            break;
+
+        case DrumKind::none:
+            break;
+    }
+
+    // The four main synthesis controls act as drum-safe macro variation.
+    // Discover is allowed to move only inside these ranges while Drum mode is active.
+    const auto globalAmpWalk = parameters.getRawParameterValue("ampWalk")->load();
+    const auto globalTimeWalk = parameters.getRawParameterValue("timeWalk")->load();
+    const auto globalAmpMirror = parameters.getRawParameterValue("ampMirror")->load();
+    const auto globalTimeMirror = parameters.getRawParameterValue("timeMirror")->load();
+
+    const auto ampScale = 0.72f + globalAmpWalk * 0.52f;
+    const auto timeScale = 0.72f + globalTimeWalk * 0.52f;
+    const auto mirrorScale = 0.88f + globalAmpMirror * 0.12f;
+    const auto timeMirrorScale = 0.88f + globalTimeMirror * 0.12f;
+
+    voice.startAmpWalk = juce::jlimit(0.0f, 1.0f, startAmpWalk * ampScale);
+    voice.endAmpWalk = juce::jlimit(0.0f, 1.0f, endAmpWalk * ampScale);
+    voice.startTimeWalk = juce::jlimit(0.0f, 1.0f, startTimeWalk * timeScale);
+    voice.endTimeWalk = juce::jlimit(0.0f, 1.0f, endTimeWalk * timeScale);
+    voice.amplitudeMirror = juce::jlimit(0.05f, 1.0f, ampMirror * mirrorScale);
+    voice.timeMirror = juce::jlimit(0.05f, 1.0f, timeMirror * timeMirrorScale);
+    voice.startFrequency = startFrequency;
+    voice.endFrequency = endFrequency;
+    voice.contractionPower = contractionPower;
+    voice.pitchPower = pitchPower;
+    voice.decayPower = decayPower;
+    voice.gain = level * (0.30f + juce::jlimit(0.0f, 1.0f, velocity) * 0.70f);
+
+    voice.percussionLengthSamples = juce::jmax<std::uint64_t>(1,
+        static_cast<std::uint64_t>(durationSeconds * currentSampleRate));
+    voice.percussionAttackSamples = juce::jmax<std::uint64_t>(1,
+        static_cast<std::uint64_t>((attackMs * 0.001f) * currentSampleRate));
+
+    const auto baseSeed = static_cast<std::uint32_t>(parameters.getRawParameterValue("seed")->load());
+    const auto voiceIndex = static_cast<std::uint32_t>(&voice - voices.data());
+    const auto kindValue = static_cast<std::uint32_t>(kind);
+    const auto derivedSeed = baseSeed
+        + static_cast<std::uint32_t>(midiNote) * 17u
+        + voiceIndex * 101u
+        + kindValue * 7919u
+        + static_cast<std::uint32_t>(layerIndex) * 3571u;
+
+    voice.oscillator.setSeed(derivedSeed == 0 ? 1u : derivedSeed);
+    voice.oscillator.setFrequency(voice.startFrequency);
+    voice.oscillator.setAmplitudeWalk(voice.startAmpWalk);
+    voice.oscillator.setTimeWalk(voice.startTimeWalk);
+    voice.oscillator.setAmplitudeMirror(voice.amplitudeMirror);
+    voice.oscillator.setTimeMirror(voice.timeMirror);
+    voice.envelope.reset();
+}
+
 void VeloriaAudioProcessor::stopNote(int midiNote)
 {
+    // Drum voices are one-shot stochastic events. Releasing the key must not cut
+    // the contraction/decay short, especially for open hats and cymbals.
+    if (drumMode)
+        return;
+
     for (auto& voice : voices)
         if (voice.active && voice.midiNote == midiNote)
             voice.envelope.noteOff();
@@ -161,13 +513,18 @@ void VeloriaAudioProcessor::stopAllVoices(bool allowTailOff)
 {
     for (auto& voice : voices)
     {
-        if (allowTailOff)
+        if (allowTailOff && ! voice.percussion)
+        {
             voice.envelope.noteOff();
+        }
         else
         {
             voice.envelope.reset();
             voice.active = false;
+            voice.percussion = false;
+            voice.drumKind = DrumKind::none;
             voice.midiNote = -1;
+            voice.percussionSample = 0;
         }
     }
 }
@@ -184,6 +541,9 @@ VeloriaAudioProcessor::Voice& VeloriaAudioProcessor::findVoiceToStart()
             oldest = &voice;
 
     oldest->envelope.reset();
+    oldest->active = false;
+    oldest->percussion = false;
+    oldest->drumKind = DrumKind::none;
     return *oldest;
 }
 
@@ -202,6 +562,9 @@ void VeloriaAudioProcessor::updateVoiceParameters()
 
     for (auto& voice : voices)
     {
+        if (voice.percussion)
+            continue;
+
         voice.oscillator.setAmplitudeWalk(ampWalk);
         voice.oscillator.setTimeWalk(timeWalk);
         voice.oscillator.setAmplitudeMirror(ampMirror);
@@ -285,6 +648,8 @@ void VeloriaAudioProcessor::setCurrentProgram(int index)
 void VeloriaAudioProcessor::applyFactoryPreset(int index)
 {
     const auto& p = factoryPresets[static_cast<std::size_t>(index)];
+    drumMode = (index == drumPresetIndex);
+
     setParameterValue("ampWalk", p.ampWalk);
     setParameterValue("timeWalk", p.timeWalk);
     setParameterValue("ampMirror", p.ampMirror);
@@ -294,15 +659,45 @@ void VeloriaAudioProcessor::applyFactoryPreset(int index)
     setParameterValue("sustain", p.sustain);
     setParameterValue("release", p.release);
     setParameterValue("seed", static_cast<float>(p.seed));
+    stopAllVoices(false);
 }
 
 void VeloriaAudioProcessor::discover()
 {
+    if (drumMode)
+    {
+        discoverDrumField();
+        return;
+    }
+
     currentProgram = -1;
     setParameterValue("ampWalk", 0.01f + discoveryRandom.nextFloat() * 0.60f);
     setParameterValue("timeWalk", 0.005f + discoveryRandom.nextFloat() * 0.48f);
     setParameterValue("ampMirror", 0.25f + discoveryRandom.nextFloat() * 0.75f);
     setParameterValue("timeMirror", 0.08f + discoveryRandom.nextFloat() * 0.82f);
+    setParameterValue("seed", static_cast<float>(1 + discoveryRandom.nextInt(999998)));
+    stopAllVoices(false);
+}
+
+void VeloriaAudioProcessor::discoverDrumField()
+{
+    // Drum discovery is deliberately fenced into the percussion grammar.
+    // It may vary the starting disorder and stochastic field, but it may not
+    // turn Drums into a pad/lead-style envelope or ordinary pitched voice.
+    currentProgram = -1;
+    drumMode = true;
+
+    setParameterValue("ampWalk", 0.48f + discoveryRandom.nextFloat() * 0.28f);
+    setParameterValue("timeWalk", 0.38f + discoveryRandom.nextFloat() * 0.27f);
+    setParameterValue("ampMirror", 0.82f + discoveryRandom.nextFloat() * 0.18f);
+    setParameterValue("timeMirror", 0.62f + discoveryRandom.nextFloat() * 0.34f);
+
+    // Keep the visible ADSR in a recognisably percussive range even though the
+    // drum voices use their own one-shot stochastic contraction envelopes.
+    setParameterValue("attack", 0.001f);
+    setParameterValue("decay", 0.12f + discoveryRandom.nextFloat() * 0.18f);
+    setParameterValue("sustain", 0.0f);
+    setParameterValue("release", 0.03f + discoveryRandom.nextFloat() * 0.08f);
     setParameterValue("seed", static_cast<float>(1 + discoveryRandom.nextInt(999998)));
     stopAllVoices(false);
 }
@@ -431,6 +826,7 @@ juce::ValueTree VeloriaAudioProcessor::makeSerializableState() const
 {
     auto state = parameters.copyState();
     state.setProperty("currentProgram", currentProgram, nullptr);
+    state.setProperty("drumMode", drumMode, nullptr);
     appendMidiMappingsToState(state);
     return state;
 }
@@ -441,6 +837,7 @@ void VeloriaAudioProcessor::restoreSerializableState(const juce::ValueTree& stat
         return;
 
     currentProgram = static_cast<int>(state.getProperty("currentProgram", -1));
+    drumMode = static_cast<bool>(state.getProperty("drumMode", currentProgram == drumPresetIndex));
     restoreMidiMappingsFromState(state);
     parameters.replaceState(state);
     stopAllVoices(false);
