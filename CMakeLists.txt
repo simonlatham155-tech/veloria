@@ -122,6 +122,13 @@ string(REPLACE "${OLD_VISUAL_RETURN}" "${NEW_VISUAL_RETURN}" VELORIA_PROCESSOR_S
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaDiagnosticProcessor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp" VELORIA_EDITOR_SOURCE)
+
+# Header wordmark: keep the angular custom letters, but make VELORIA read as one
+# coherent logo rather than seven widely-separated glyphs.
+string(REPLACE "const float glyphW = h * 0.78f;\n    const float gap = h * 0.16f;"
+               "const float glyphW = h * 0.70f;\n    const float gap = h * 0.045f;"
+               VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+
 set(OLD_STATUS [[    voiceStatus.setText("VOICE ENGINE   "+juce::String(visualState.activeVoices)+" / 8 ACTIVE",juce::dontSendNotification); fieldStatus.setText(juce::String(visualState.activeVoices)+" VOICES  //  "+juce::String((int)(visualState.energy*100.0f))+"% ENERGY",juce::dontSendNotification);
 ]])
 set(NEW_STATUS [[    voiceStatus.setText("ON "+juce::String(visualState.midiNoteOns)+"  OFF "+juce::String(visualState.midiNoteOffs)+"  MATCH "+juce::String(visualState.midiNoteOffMatches),juce::dontSendNotification); fieldStatus.setText(juce::String(visualState.activeVoices)+" VOICES  //  "+juce::String((int)(visualState.energy*100.0f))+"% ENERGY",juce::dontSendNotification);
