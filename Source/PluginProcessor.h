@@ -18,6 +18,9 @@ public:
         std::array<float, visualBreakpointCount> durations {};
         int activeVoices { 0 };
         float energy { 0.0f };
+        int midiNoteOns { 0 };
+        int midiNoteOffs { 0 };
+        int midiNoteOffMatches { 0 };
     };
 
     VeloriaAudioProcessor();
@@ -291,6 +294,10 @@ private:
     std::array<std::atomic<float>, visualBreakpointCount> visualDurations {};
     std::atomic<int> visualActiveVoices { 0 };
     std::atomic<float> visualEnergy { 0.0f };
+
+    std::atomic<int> midiNoteOnCount { 0 };
+    std::atomic<int> midiNoteOffCount { 0 };
+    std::atomic<int> midiNoteOffMatchCount { 0 };
 
     std::array<std::atomic<int>, midiLearnParameterCount> midiCCMappings {};
     std::atomic<int> midiLearnTarget { -1 };
