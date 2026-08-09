@@ -22,6 +22,12 @@ public:
         arcsine
     };
 
+    enum class OperatingModel
+    {
+        veloria,
+        brownIdss
+    };
+
     void prepare(double newSampleRate)
     {
         sampleRate = juce::jmax(1.0, newSampleRate);
@@ -49,6 +55,7 @@ public:
     void setAmplitudeStepScale(float value) noexcept { amplitudeStepScale = juce::jlimit(0.10f, 2.0f, value); }
     void setTimeStepScale(float value) noexcept { timeStepScale = juce::jlimit(0.10f, 2.0f, value); }
     void setWalkOrder(int value) noexcept { walkOrder = juce::jlimit(1, 2, value); }
+    void setOperatingModel(OperatingModel value) noexcept { operatingModel = value; }
     void setActiveBreakpointCount(int value) noexcept
     {
         activeBreakpointCount = static_cast<std::size_t>(juce::jlimit(4, static_cast<int>(numBreakpoints), value));
@@ -81,16 +88,16 @@ public:
 
         const auto nextIndex = (segmentIndex + 1) % count;
         const auto rawT = static_cast<float>(segmentPhase);
-        const auto smoothT = rawT * rawT * (3.0f - 2.0f * rawT);
-        const auto t = juce::jmap(interpolationShape, rawT, smoothT);
+        const auto t = interpolationFor(rawT);
         const auto output = amplitudes[segmentIndex]
                           + (amplitudes[nextIndex] - amplitudes[segmentIndex]) * t;
 
         const auto totalDuration = durationSum();
         const auto normalisedDuration = durations[segmentIndex] / totalDuration;
 
-        // Stability=1 keeps the keyboard pitch strictly normalised. Lower values
-        // progressively allow the changing duration field to pull the cycle rate.
+        // Veloria can continuously normalise the emergent duration field back toward
+        // keyboard pitch. Brown IDSS mode additionally makes high PITCH LOCK behave
+        // like IDSS's fixed-segment-length stabilisation control.
         const auto driftRatio = static_cast<float>(count) / juce::jmax(0.001f, totalDuration);
         const auto pitchRatio = juce::jmap(pitchStability, driftRatio, 1.0f);
         const auto cyclesPerSample = static_cast<double>(frequency * pitchRatio) / sampleRate;
@@ -109,6 +116,29 @@ public:
     }
 
 private:
+    [[nodiscard]] bool isBrownIdss() const noexcept
+    {
+        return operatingModel == OperatingModel::brownIdss;
+    }
+
+    [[nodiscard]] float interpolationFor(float rawT) const noexcept
+    {
+        if (! isBrownIdss())
+        {
+            const auto smoothT = rawT * rawT * (3.0f - 2.0f * rawT);
+            return juce::jmap(interpolationShape, rawT, smoothT);
+        }
+
+        // Brown's IDSS exposed linear, cosine and square interpolation choices.
+        // Veloria keeps one CURVE control and continuously morphs through those
+        // three historically documented IDSS behaviours.
+        const auto cosineT = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::pi * rawT);
+        const auto squareT = rawT * rawT;
+        if (interpolationShape <= 0.5f)
+            return juce::jmap(interpolationShape * 2.0f, rawT, cosineT);
+        return juce::jmap((interpolationShape - 0.5f) * 2.0f, cosineT, squareT);
+    }
+
     void initialiseState() noexcept
     {
         for (std::size_t i = 0; i < numBreakpoints; ++i)
@@ -121,12 +151,22 @@ private:
             amplitudeStepState[i] = 0.0f;
             timeStepState[i] = 0.0f;
         }
+
+        if (isBrownIdss())
+        {
+            amplitudes.front() = 0.0f;
+            amplitudes[activeBreakpointCount - 1] = 0.0f;
+        }
     }
 
     void evolveBreakpoint(std::size_t index) noexcept
     {
-        const auto maxAmpStep = juce::jmap(amplitudeWalk, 0.0002f, 0.24f) * amplitudeStepScale;
-        const auto maxTimeStep = juce::jmap(timeWalk, 0.0002f, 0.20f) * timeStepScale;
+        // Brown's IDSS used exponential step slider scaling to gain much finer
+        // control over gentle stochastic pitch/timbre motion near zero.
+        const auto ampWalkControl = isBrownIdss() ? std::pow(amplitudeWalk, 2.15f) : amplitudeWalk;
+        const auto timeWalkControl = isBrownIdss() ? std::pow(timeWalk, 2.35f) : timeWalk;
+        const auto maxAmpStep = juce::jmap(ampWalkControl, 0.0002f, 0.24f) * amplitudeStepScale;
+        const auto maxTimeStep = juce::jmap(timeWalkControl, 0.0002f, 0.20f) * timeStepScale;
 
         const auto ampRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
         const auto timeRandom = distributedRandom(timeDistribution, timeWalk);
@@ -144,30 +184,46 @@ private:
                 durations[index] + timeRandom * maxTimeStep,
                 minimumDuration,
                 maximumDuration);
-            return;
+        }
+        else
+        {
+            amplitudeStepState[index] = reflect(
+                amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f,
+                -maxAmpStep,
+                maxAmpStep);
+
+            timeStepState[index] = reflect(
+                timeStepState[index] + timeRandom * maxTimeStep * 0.35f,
+                -maxTimeStep,
+                maxTimeStep);
+
+            amplitudes[index] = reflect(
+                amplitudes[index] + amplitudeStepState[index],
+                -amplitudeMirror,
+                amplitudeMirror);
+
+            const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
+            const auto maximumDuration = 1.0f + timeMirror * 2.75f;
+            durations[index] = reflect(
+                durations[index] + timeStepState[index],
+                minimumDuration,
+                maximumDuration);
         }
 
-        amplitudeStepState[index] = reflect(
-            amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f,
-            -maxAmpStep,
-            maxAmpStep);
+        if (isBrownIdss())
+        {
+            // IDSS offered a zero-crossing constraint at the wave-cycle pivot.
+            // The two edge points are anchored here to retain that behaviour.
+            if (index == 0 || index + 1 == activeBreakpointCount)
+                amplitudes[index] = 0.0f;
 
-        timeStepState[index] = reflect(
-            timeStepState[index] + timeRandom * maxTimeStep * 0.35f,
-            -maxTimeStep,
-            maxTimeStep);
-
-        amplitudes[index] = reflect(
-            amplitudes[index] + amplitudeStepState[index],
-            -amplitudeMirror,
-            amplitudeMirror);
-
-        const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
-        const auto maximumDuration = 1.0f + timeMirror * 2.75f;
-        durations[index] = reflect(
-            durations[index] + timeStepState[index],
-            minimumDuration,
-            maximumDuration);
+            // Brown also provided a fixed-segment-length pitch mode. Rather than
+            // introduce another hidden switch, PITCH LOCK progressively becomes
+            // that stabiliser in IDSS mode while remaining continuous and playable.
+            const auto fixedSegmentAmount = std::pow(pitchStability, 5.0f);
+            durations[index] = juce::jmap(fixedSegmentAmount, durations[index], 1.0f);
+            timeStepState[index] *= (1.0f - fixedSegmentAmount * 0.92f);
+        }
     }
 
     [[nodiscard]] float durationSum() const noexcept
@@ -275,6 +331,7 @@ private:
     int walkOrder { 2 };
     Distribution amplitudeDistribution { Distribution::adaptive };
     Distribution timeDistribution { Distribution::adaptive };
+    OperatingModel operatingModel { OperatingModel::veloria };
     std::uint32_t seed { 1u };
 };
 } // namespace veloria::dsp
