@@ -31,7 +31,7 @@ void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<float> area)
     const auto h = area.getHeight();
     const auto stroke = juce::jmax(1.0f, h * 0.045f);
     const float glyphW = h * 0.78f;
-    const float gap = h * 0.34f;
+    const float gap = h * 0.16f;
     const float totalW = glyphW * 7.0f + gap * 6.0f;
     const float x0 = area.getCentreX() - totalW * 0.5f;
     const float top = area.getY() + h * 0.10f;
