@@ -51,6 +51,24 @@ public:
     VisualState getVisualState() const noexcept;
     bool isDrumMode() const noexcept { return drumMode; }
 
+    // Historical operating model. Brown IDSS mode honours Andrew R. Brown's
+    // Interactive Dynamic Stochastic Synthesizer as an engine contribution,
+    // not as a cosmetic preset. It changes the oscillator rules for every voice.
+    void setBrownIdssMode(bool shouldUseBrownModel) noexcept
+    {
+        brownIdssMode.store(shouldUseBrownModel, std::memory_order_relaxed);
+        const auto model = shouldUseBrownModel
+            ? veloria::dsp::StochasticOscillator::OperatingModel::brownIdss
+            : veloria::dsp::StochasticOscillator::OperatingModel::veloria;
+        for (auto& voice : voices)
+            voice.oscillator.setOperatingModel(model);
+    }
+
+    bool isBrownIdssMode() const noexcept
+    {
+        return brownIdssMode.load(std::memory_order_relaxed);
+    }
+
     void beginMidiLearn(const juce::String& parameterId) noexcept;
     void clearMidiMapping(const juce::String& parameterId) noexcept;
     int getMidiCCForParameter(const juce::String& parameterId) const noexcept;
@@ -154,6 +172,7 @@ private:
     std::uint64_t voiceCounter { 0 };
     int currentProgram { 0 };
     bool drumMode { false };
+    std::atomic<bool> brownIdssMode { false };
     double currentSampleRate { 44100.0 };
 
     std::array<std::atomic<float>, visualBreakpointCount> visualAmplitudes {};
