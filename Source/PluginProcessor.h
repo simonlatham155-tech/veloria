@@ -96,18 +96,17 @@ private:
         tom
     };
 
-    // JUCE ADSR recalculates its stage rates whenever setParameters() is called.
-    // The processor updates synthesis parameters every audio block, so forwarding
-    // an unchanged ADSR parameter set every block can continually recalculate the
-    // release from its current level and make a note appear to decay forever.
-    // This wrapper forwards only genuine envelope changes, while preserving live
-    // ADSR editing and the normal JUCE ADSR API used by the voice engine.
+    // Stable wrapper around JUCE's ADSR. Identical parameter writes are ignored,
+    // and note-off also starts a sample-accurate release deadline. This preserves
+    // the normal ADSR curve while guaranteeing that a tonal voice cannot remain
+    // active beyond the RELEASE time if the underlying ADSR state ever sticks.
     class StableADSR
     {
     public:
         void setSampleRate(double newSampleRate)
         {
-            adsr.setSampleRate(newSampleRate);
+            sampleRate = juce::jmax(1.0, newSampleRate);
+            adsr.setSampleRate(sampleRate);
         }
 
         void setParameters(const juce::ADSR::Parameters& newParameters)
@@ -126,15 +125,57 @@ private:
             adsr.setParameters(parameters);
         }
 
-        void reset() noexcept { adsr.reset(); }
-        void noteOn() noexcept { adsr.noteOn(); }
-        void noteOff() noexcept { adsr.noteOff(); }
-        float getNextSample() noexcept { return adsr.getNextSample(); }
+        void reset() noexcept
+        {
+            adsr.reset();
+            releaseActive = false;
+            releaseSamplesRemaining = 0;
+        }
+
+        void noteOn() noexcept
+        {
+            releaseActive = false;
+            releaseSamplesRemaining = 0;
+            adsr.noteOn();
+        }
+
+        void noteOff() noexcept
+        {
+            adsr.noteOff();
+            releaseActive = true;
+            const auto seconds = juce::jmax(0.0f, parameters.release);
+            releaseSamplesRemaining = juce::jmax<std::uint64_t>(
+                1,
+                static_cast<std::uint64_t>(std::ceil(static_cast<double>(seconds) * sampleRate)));
+        }
+
+        float getNextSample() noexcept
+        {
+            const auto sample = adsr.getNextSample();
+
+            if (releaseActive)
+            {
+                if (releaseSamplesRemaining > 0)
+                    --releaseSamplesRemaining;
+
+                if (releaseSamplesRemaining == 0)
+                {
+                    adsr.reset();
+                    releaseActive = false;
+                }
+            }
+
+            return sample;
+        }
+
         bool isActive() const noexcept { return adsr.isActive(); }
 
     private:
         juce::ADSR adsr;
         juce::ADSR::Parameters parameters {};
+        double sampleRate { 44100.0 };
+        std::uint64_t releaseSamplesRemaining { 0 };
+        bool releaseActive { false };
         bool hasParameters { false };
     };
 
