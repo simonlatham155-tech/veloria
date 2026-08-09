@@ -49,6 +49,7 @@ public:
     void newField();
     juce::StringArray getFactoryPresetNames() const;
     VisualState getVisualState() const noexcept;
+    bool isDrumMode() const noexcept { return drumMode; }
 
     void beginMidiLearn(const juce::String& parameterId) noexcept;
     void clearMidiMapping(const juce::String& parameterId) noexcept;
@@ -102,6 +103,7 @@ private:
         float pitchPower { 2.0f };
         float decayPower { 2.0f };
         float gain { 1.0f };
+        float pressure { 0.0f };
     };
 
     struct FactoryPreset
