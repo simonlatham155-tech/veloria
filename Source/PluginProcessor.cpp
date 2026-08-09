@@ -33,7 +33,7 @@ const std::array<VeloriaAudioProcessor::FactoryPreset, 10> VeloriaAudioProcessor
     { "Bell",        0.07f, 0.018f,0.84f, 0.22f, 0.002f,1.45f, 0.02f, 1.10f, 8609 },
     { "Pluck",       0.10f, 0.04f, 0.76f, 0.26f, 0.002f,0.32f, 0.04f, 0.25f, 9719 },
     { "FX",          0.55f, 0.50f, 1.00f, 0.95f, 0.04f, 1.00f, 0.60f, 3.20f,10831 },
-    { "Drums",       0.62f, 0.52f, 0.96f, 0.86f, 0.001f,0.20f, 0.00f, 0.05f,11939 }
+    { "Veloria Club Beats", 0.62f, 0.52f, 0.96f, 0.86f, 0.001f,0.20f, 0.00f, 0.05f,11939 }
 }};
 
 const std::array<const char*, VeloriaAudioProcessor::midiLearnParameterCount>
@@ -93,7 +93,7 @@ void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
         voice.midiNote = -1;
         voice.pressure = 0.0f;
     }
-    outputGain.prepare({ currentSampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
+    outputGain.prepare({ currentSampleRate, static_cast<juce::uint32_t>(samplesPerBlock), 2 });
     updateVoiceParameters();
     publishVisualState(0.0f);
 }
@@ -133,12 +133,36 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                     voice.pressure = pressure;
         }
 
-        if (message.isNoteOn())
-            startNote(message.getNoteNumber(), message.getFloatVelocity());
-        else if (message.isNoteOff())
-            stopNote(message.getNoteNumber());
-        else if (message.isAllNotesOff() || message.isAllSoundOff())
-            stopAllVoices(false);
+        bool handledNoteMessage = false;
+        const auto* raw = message.getRawData();
+        const auto rawSize = message.getRawDataSize();
+        if (raw != nullptr && rawSize >= 3)
+        {
+            const auto status = raw[0] & 0xF0;
+            const auto note = raw[1] & 0x7F;
+            const auto velocity = raw[2] & 0x7F;
+
+            if (status == 0x90 && velocity > 0)
+            {
+                startNote(note, static_cast<float>(velocity) / 127.0f);
+                handledNoteMessage = true;
+            }
+            else if (status == 0x80 || (status == 0x90 && velocity == 0))
+            {
+                stopNote(note);
+                handledNoteMessage = true;
+            }
+        }
+
+        if (! handledNoteMessage)
+        {
+            if (message.isNoteOn(false))
+                startNote(message.getNoteNumber(), message.getFloatVelocity());
+            else if (message.isNoteOff(true))
+                stopNote(message.getNoteNumber());
+            else if (message.isAllNotesOff() || message.isAllSoundOff())
+                stopAllVoices(false);
+        }
     }
 
     // Reapply once after MIDI so pressure changes affect the same block.
@@ -576,7 +600,7 @@ void VeloriaAudioProcessor::discover()
 
     switch (family)
     {
-        case 1: // Piano: a 1970s stochastic-synth attempt at a struck piano identity.
+        case 1:
             setParameterValue("ampWalk",range(.025f,.085f)); setParameterValue("timeWalk",range(.012f,.045f));
             setParameterValue("ampMirror",range(.60f,.82f)); setParameterValue("timeMirror",range(.12f,.30f));
             setParameterValue("ampDist",choose({2,4})); setParameterValue("timeDist",choose({1,2}));
@@ -585,7 +609,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.22f,.48f)); setParameterValue("chaos",range(.02f,.14f));
             setParameterValue("attack",range(.001f,.012f)); setParameterValue("decay",range(.55f,1.35f));
             setParameterValue("sustain",range(.04f,.22f)); setParameterValue("release",range(.28f,.95f)); break;
-        case 2: // Pad
+        case 2:
             setParameterValue("ampWalk",range(.09f,.24f)); setParameterValue("timeWalk",range(.06f,.17f));
             setParameterValue("ampMirror",range(.78f,1.0f)); setParameterValue("timeMirror",range(.42f,.78f));
             setParameterValue("ampDist",choose({1,2,3})); setParameterValue("timeDist",choose({1,2,3}));
@@ -594,7 +618,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.58f,1.0f)); setParameterValue("chaos",range(.05f,.24f));
             setParameterValue("attack",range(.55f,2.4f)); setParameterValue("decay",range(.9f,2.8f));
             setParameterValue("sustain",range(.68f,.96f)); setParameterValue("release",range(2.0f,6.5f)); break;
-        case 3: // Strings
+        case 3:
             setParameterValue("ampWalk",range(.055f,.15f)); setParameterValue("timeWalk",range(.035f,.11f));
             setParameterValue("ampMirror",range(.72f,.94f)); setParameterValue("timeMirror",range(.30f,.62f));
             setParameterValue("ampDist",choose({2,3})); setParameterValue("timeDist",choose({1,2}));
@@ -603,7 +627,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.42f,.72f)); setParameterValue("chaos",range(.04f,.18f));
             setParameterValue("attack",range(.12f,.75f)); setParameterValue("decay",range(.55f,1.5f));
             setParameterValue("sustain",range(.68f,.92f)); setParameterValue("release",range(.9f,3.2f)); break;
-        case 4: // Bass
+        case 4:
             setParameterValue("ampWalk",range(.018f,.075f)); setParameterValue("timeWalk",range(.008f,.04f));
             setParameterValue("ampMirror",range(.52f,.76f)); setParameterValue("timeMirror",range(.09f,.25f));
             setParameterValue("ampDist",choose({1,2,3})); setParameterValue("timeDist",choose({1,2}));
@@ -612,7 +636,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.08f,.28f)); setParameterValue("chaos",range(0.0f,.10f));
             setParameterValue("attack",range(.002f,.025f)); setParameterValue("decay",range(.12f,.45f));
             setParameterValue("sustain",range(.48f,.82f)); setParameterValue("release",range(.08f,.5f)); break;
-        case 5: // Lead
+        case 5:
             setParameterValue("ampWalk",range(.035f,.14f)); setParameterValue("timeWalk",range(.018f,.075f));
             setParameterValue("ampMirror",range(.62f,.88f)); setParameterValue("timeMirror",range(.18f,.42f));
             setParameterValue("ampDist",choose({2,3,4})); setParameterValue("timeDist",choose({1,2,3}));
@@ -621,7 +645,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.12f,.42f)); setParameterValue("chaos",range(.04f,.22f));
             setParameterValue("attack",range(.002f,.08f)); setParameterValue("decay",range(.16f,.65f));
             setParameterValue("sustain",range(.58f,.88f)); setParameterValue("release",range(.12f,.75f)); break;
-        case 6: // Bell
+        case 6:
             setParameterValue("ampWalk",range(.035f,.11f)); setParameterValue("timeWalk",range(.008f,.045f));
             setParameterValue("ampMirror",range(.72f,.96f)); setParameterValue("timeMirror",range(.12f,.34f));
             setParameterValue("ampDist",choose({4,5})); setParameterValue("timeDist",choose({3,4}));
@@ -630,7 +654,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.05f,.30f)); setParameterValue("chaos",range(.10f,.34f));
             setParameterValue("attack",range(.001f,.008f)); setParameterValue("decay",range(.8f,2.2f));
             setParameterValue("sustain",range(0.0f,.06f)); setParameterValue("release",range(.65f,2.6f)); break;
-        case 7: // Pluck
+        case 7:
             setParameterValue("ampWalk",range(.055f,.16f)); setParameterValue("timeWalk",range(.018f,.07f));
             setParameterValue("ampMirror",range(.62f,.86f)); setParameterValue("timeMirror",range(.15f,.36f));
             setParameterValue("ampDist",choose({1,2,4})); setParameterValue("timeDist",choose({1,2}));
@@ -639,7 +663,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("curve",range(.22f,.58f)); setParameterValue("chaos",range(.06f,.24f));
             setParameterValue("attack",range(.001f,.006f)); setParameterValue("decay",range(.16f,.48f));
             setParameterValue("sustain",range(0.0f,.08f)); setParameterValue("release",range(.08f,.42f)); break;
-        case 8: // FX
+        case 8:
             setParameterValue("ampWalk",range(.28f,.82f)); setParameterValue("timeWalk",range(.24f,.78f));
             setParameterValue("ampMirror",range(.72f,1.0f)); setParameterValue("timeMirror",range(.55f,1.0f));
             setParameterValue("ampDist",choose({3,4,5})); setParameterValue("timeDist",choose({3,4,5}));
@@ -649,7 +673,7 @@ void VeloriaAudioProcessor::discover()
             setParameterValue("attack",range(.001f,.25f)); setParameterValue("decay",range(.25f,1.5f));
             setParameterValue("sustain",range(.25f,.82f)); setParameterValue("release",range(.4f,4.5f)); break;
         case 0:
-        default: // GENDYN Core / free laboratory mode.
+        default:
             setParameterValue("ampWalk",range(.01f,.61f)); setParameterValue("timeWalk",range(.005f,.485f));
             setParameterValue("ampMirror",range(.25f,1.0f)); setParameterValue("timeMirror",range(.08f,.90f));
             setParameterValue("ampDist",intRange(0,5)); setParameterValue("timeDist",intRange(0,5));
