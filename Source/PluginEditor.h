@@ -125,126 +125,127 @@ private:
             g.setColour(gold.withAlpha(0.22f));
             g.drawRoundedRectangle(bounds.reduced(0.5f), 12.0f, 1.0f);
 
-            juce::Graphics::ScopedSaveState scrollState(g);
-            g.reduceClipRegion(getLocalBounds().reduced(2));
-            g.addTransform(juce::AffineTransform::translation(0.0f, -scrollOffset));
-
-            auto inner = juce::Rectangle<float>(24.0f, 24.0f, bounds.getWidth() - 62.0f, contentHeight - 48.0f);
-            auto header = inner.removeFromTop(112.0f);
-            g.setColour(gold.withAlpha(0.96f));
-            g.setFont(juce::FontOptions(31.0f, juce::Font::bold));
-            g.drawText("WHAT IF?  //  THE SYNTHESIS INDUSTRY THAT NEVER HAPPENED",
-                       header.removeFromTop(44.0f).toNearestInt(), juce::Justification::centredLeft);
-            g.setColour(juce::Colours::white.withAlpha(0.72f));
-            g.setFont(juce::FontOptions(15.0f));
-            g.drawFittedText("First, the history that DID happen. Then the question Veloria asks: what if stochastic synthesis had received decades of dedicated instrument design and musical refinement?",
-                             header.toNearestInt(), juce::Justification::centredLeft, 3);
-
-            inner.removeFromTop(14.0f);
-            drawHeroIllustration(g, inner.removeFromTop(290.0f), panel, gold, purple, magenta, cyan);
-            inner.removeFromTop(24.0f);
-
-            auto sectionLabel = [&](const juce::String& text, juce::Colour colour)
             {
-                auto r = inner.removeFromTop(34.0f);
-                g.setColour(colour.withAlpha(0.94f));
-                g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-                g.drawText(text, r.toNearestInt(), juce::Justification::centredLeft);
-                inner.removeFromTop(10.0f);
-            };
+                juce::Graphics::ScopedSaveState scrollState(g);
+                g.reduceClipRegion(getLocalBounds().reduced(2));
+                g.addTransform(juce::AffineTransform::translation(0.0f, -scrollOffset));
 
-            auto historyCard = [&](juce::Rectangle<float> r, const juce::String& years,
-                                   const juce::String& name, const juce::String& role,
-                                   const juce::String& story, juce::Colour colour)
-            {
-                g.setColour(panel.withAlpha(0.97f));
-                g.fillRoundedRectangle(r, 10.0f);
-                g.setColour(colour.withAlpha(0.34f));
-                g.drawRoundedRectangle(r, 10.0f, 1.2f);
-                auto c = r.reduced(20.0f);
-                g.setColour(colour.withAlpha(0.94f));
-                g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-                g.drawText(years, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
-                g.setColour(juce::Colours::white.withAlpha(0.97f));
-                g.setFont(juce::FontOptions(23.0f, juce::Font::bold));
-                g.drawText(name, c.removeFromTop(34.0f).toNearestInt(), juce::Justification::centredLeft);
-                g.setColour(colour.withAlpha(0.86f));
-                g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-                g.drawText(role, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
-                c.removeFromTop(8.0f);
+                auto inner = juce::Rectangle<float>(24.0f, 24.0f, bounds.getWidth() - 62.0f, contentHeight - 48.0f);
+                auto header = inner.removeFromTop(112.0f);
+                g.setColour(gold.withAlpha(0.96f));
+                g.setFont(juce::FontOptions(31.0f, juce::Font::bold));
+                g.drawText("WHAT IF?  //  THE SYNTHESIS INDUSTRY THAT NEVER HAPPENED",
+                           header.removeFromTop(44.0f).toNearestInt(), juce::Justification::centredLeft);
                 g.setColour(juce::Colours::white.withAlpha(0.72f));
-                g.setFont(juce::FontOptions(14.0f));
-                g.drawFittedText(story, c.toNearestInt(), juce::Justification::topLeft, 7);
-            };
+                g.setFont(juce::FontOptions(15.0f));
+                g.drawFittedText("First, the history that DID happen. Then the question Veloria asks: what if stochastic synthesis had received decades of dedicated instrument design and musical refinement?",
+                                 header.toNearestInt(), juce::Justification::centredLeft, 3);
 
-            sectionLabel("REAL HISTORY  //  THE TWO FOUNDATIONAL MOMENTS", cyan);
-            auto realRow = inner.removeFromTop(270.0f);
-            auto xenakis = realRow.removeFromLeft((realRow.getWidth() - 18.0f) * 0.5f);
-            realRow.removeFromLeft(18.0f);
-            historyCard(xenakis, "1950s-1970s", "IANNIS XENAKIS", "THE FOUNDATIONAL MOMENT  //  INVENT THE LANGUAGE",
-                        "Dynamic Stochastic Synthesis makes the waveform itself a probability system. Breakpoints, random walks, reflecting barriers and statistical distributions become a new grammar for generating sound.", gold);
-            historyCard(realRow, "2004-2005", "ANDREW R. BROWN + GREG JENKINS", "THE INSTRUMENT MOMENT  //  MAKE IT PLAYABLE",
-                        "IDSS turns DSS toward real-time musical interaction: finer step control, pitch stabilisation, interpolation choices and stochastic percussion gestures. The research language becomes something a performer can deliberately play.", magenta);
-
-            inner.removeFromTop(24.0f);
-            auto hinge = inner.removeFromTop(82.0f);
-            g.setColour(gold.withAlpha(0.14f));
-            g.fillRoundedRectangle(hinge, 8.0f);
-            g.setColour(gold.withAlpha(0.96f));
-            g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
-            g.drawText("WHAT IF THE SYNTH INDUSTRY HAD TAKEN THAT BALL AND RUN WITH IT?",
-                       hinge.removeFromTop(42.0f).toNearestInt(), juce::Justification::centred);
-            g.setColour(juce::Colours::white.withAlpha(0.58f));
-            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-            g.drawText("THIS IS WHERE THE HISTORY THAT NEVER HAPPENED BEGINS.", hinge.toNearestInt(), juce::Justification::centred);
-
-            inner.removeFromTop(24.0f);
-            sectionLabel("THE MISSING INDUSTRY  //  AN IMAGINED COMMERCIAL EVOLUTION", purple);
-
-            struct FutureCard { const char* name; const char* tag; const char* story; juce::Colour colour; int visual; };
-            const std::array<FutureCard, 4> futures {{
-                { "THE STOCHASTIC MONOSYNTH", "THE PERFORMANCE SYNTH",
-                  "Barrier Width becomes the big expressive control. Cauchy Step becomes the bite. Walk Order, distributions and pitch stabilisation are designed for hands-on playing rather than laboratory parameter entry.", magenta, 0 },
-                { "THE STOCHASTIC ACID BOX", "THE BASS MACHINE",
-                  "A compact sequenced instrument discovers its own club language: mutation replaces filter sweep, probability shapes slide, and eruptive heavy-tailed jumps create a new kind of squelch from waveform evolution itself.", purple, 1 },
-                { "THE STOCHASTIC DRUM MACHINE", "THE CLUB MACHINE",
-                  "Kick contraction, stochastic transients and dual-engine snares turn Brown's percussion insight into a complete rhythm instrument. The chaos is not added noise; it is the drum's waveform evolving in time.", cyan, 2 },
-                { "VELORIA 2026", "THE MISSING FIFTY YEARS",
-                  "Polyphony, family-aware presets, expressive pressure, recallable stochastic fields and a living mathematical interface. Not a recreation of one historical machine, but the instrument this synthesis lineage might have grown into.", gold, 3 }
-            }};
-
-            for (const auto& f : futures)
-            {
-                auto r = inner.removeFromTop(210.0f);
-                g.setColour(panel.withAlpha(0.96f));
-                g.fillRoundedRectangle(r, 9.0f);
-                g.setColour(f.colour.withAlpha(0.28f));
-                g.drawRoundedRectangle(r, 9.0f, 1.1f);
-
-                auto c = r.reduced(18.0f);
-                auto visual = c.removeFromRight(360.0f);
-                c.removeFromRight(20.0f);
-                g.setColour(juce::Colours::white.withAlpha(0.96f));
-                g.setFont(juce::FontOptions(20.0f, juce::Font::bold));
-                g.drawText(f.name, c.removeFromTop(32.0f).toNearestInt(), juce::Justification::centredLeft);
-                g.setColour(f.colour.withAlpha(0.86f));
-                g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-                g.drawText(f.tag, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
-                c.removeFromTop(7.0f);
-                g.setColour(juce::Colours::white.withAlpha(0.70f));
-                g.setFont(juce::FontOptions(14.0f));
-                g.drawFittedText(f.story, c.toNearestInt(), juce::Justification::topLeft, 7);
-                drawFutureVisual(g, visual, f.colour, f.visual);
                 inner.removeFromTop(14.0f);
+                drawHeroIllustration(g, inner.removeFromTop(290.0f), panel, gold, purple, magenta, cyan);
+                inner.removeFromTop(24.0f);
+
+                auto sectionLabel = [&](const juce::String& text, juce::Colour colour)
+                {
+                    auto r = inner.removeFromTop(34.0f);
+                    g.setColour(colour.withAlpha(0.94f));
+                    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+                    g.drawText(text, r.toNearestInt(), juce::Justification::centredLeft);
+                    inner.removeFromTop(10.0f);
+                };
+
+                auto historyCard = [&](juce::Rectangle<float> r, const juce::String& years,
+                                       const juce::String& name, const juce::String& role,
+                                       const juce::String& story, juce::Colour colour)
+                {
+                    g.setColour(panel.withAlpha(0.97f));
+                    g.fillRoundedRectangle(r, 10.0f);
+                    g.setColour(colour.withAlpha(0.34f));
+                    g.drawRoundedRectangle(r, 10.0f, 1.2f);
+                    auto c = r.reduced(20.0f);
+                    g.setColour(colour.withAlpha(0.94f));
+                    g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+                    g.drawText(years, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
+                    g.setColour(juce::Colours::white.withAlpha(0.97f));
+                    g.setFont(juce::FontOptions(23.0f, juce::Font::bold));
+                    g.drawText(name, c.removeFromTop(34.0f).toNearestInt(), juce::Justification::centredLeft);
+                    g.setColour(colour.withAlpha(0.86f));
+                    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+                    g.drawText(role, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
+                    c.removeFromTop(8.0f);
+                    g.setColour(juce::Colours::white.withAlpha(0.72f));
+                    g.setFont(juce::FontOptions(14.0f));
+                    g.drawFittedText(story, c.toNearestInt(), juce::Justification::topLeft, 7);
+                };
+
+                sectionLabel("REAL HISTORY  //  THE TWO FOUNDATIONAL MOMENTS", cyan);
+                auto realRow = inner.removeFromTop(270.0f);
+                auto xenakis = realRow.removeFromLeft((realRow.getWidth() - 18.0f) * 0.5f);
+                realRow.removeFromLeft(18.0f);
+                historyCard(xenakis, "1950s-1970s", "IANNIS XENAKIS", "THE FOUNDATIONAL MOMENT  //  INVENT THE LANGUAGE",
+                            "Dynamic Stochastic Synthesis makes the waveform itself a probability system. Breakpoints, random walks, reflecting barriers and statistical distributions become a new grammar for generating sound.", gold);
+                historyCard(realRow, "2004-2005", "ANDREW R. BROWN + GREG JENKINS", "THE INSTRUMENT MOMENT  //  MAKE IT PLAYABLE",
+                            "IDSS turns DSS toward real-time musical interaction: finer step control, pitch stabilisation, interpolation choices and stochastic percussion gestures. The research language becomes something a performer can deliberately play.", magenta);
+
+                inner.removeFromTop(24.0f);
+                auto hinge = inner.removeFromTop(82.0f);
+                g.setColour(gold.withAlpha(0.14f));
+                g.fillRoundedRectangle(hinge, 8.0f);
+                g.setColour(gold.withAlpha(0.96f));
+                g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+                g.drawText("WHAT IF THE SYNTH INDUSTRY HAD TAKEN THAT BALL AND RUN WITH IT?",
+                           hinge.removeFromTop(42.0f).toNearestInt(), juce::Justification::centred);
+                g.setColour(juce::Colours::white.withAlpha(0.58f));
+                g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+                g.drawText("THIS IS WHERE THE HISTORY THAT NEVER HAPPENED BEGINS.", hinge.toNearestInt(), juce::Justification::centred);
+
+                inner.removeFromTop(24.0f);
+                sectionLabel("THE MISSING INDUSTRY  //  AN IMAGINED COMMERCIAL EVOLUTION", purple);
+
+                struct FutureCard { const char* name; const char* tag; const char* story; juce::Colour colour; int visual; };
+                const std::array<FutureCard, 4> futures {{
+                    { "THE STOCHASTIC MONOSYNTH", "THE PERFORMANCE SYNTH",
+                      "Barrier Width becomes the big expressive control. Cauchy Step becomes the bite. Walk Order, distributions and pitch stabilisation are designed for hands-on playing rather than laboratory parameter entry.", magenta, 0 },
+                    { "THE STOCHASTIC ACID BOX", "THE BASS MACHINE",
+                      "A compact sequenced instrument discovers its own club language: mutation replaces filter sweep, probability shapes slide, and eruptive heavy-tailed jumps create a new kind of squelch from waveform evolution itself.", purple, 1 },
+                    { "THE STOCHASTIC DRUM MACHINE", "THE CLUB MACHINE",
+                      "Kick contraction, stochastic transients and dual-engine snares turn Brown's percussion insight into a complete rhythm instrument. The chaos is not added noise; it is the drum's waveform evolving in time.", cyan, 2 },
+                    { "VELORIA 2026", "THE MISSING FIFTY YEARS",
+                      "Polyphony, family-aware presets, expressive pressure, recallable stochastic fields and a living mathematical interface. Not a recreation of one historical machine, but the instrument this synthesis lineage might have grown into.", gold, 3 }
+                }};
+
+                for (const auto& f : futures)
+                {
+                    auto r = inner.removeFromTop(210.0f);
+                    g.setColour(panel.withAlpha(0.96f));
+                    g.fillRoundedRectangle(r, 9.0f);
+                    g.setColour(f.colour.withAlpha(0.28f));
+                    g.drawRoundedRectangle(r, 9.0f, 1.1f);
+
+                    auto c = r.reduced(18.0f);
+                    auto visual = c.removeFromRight(360.0f);
+                    c.removeFromRight(20.0f);
+                    g.setColour(juce::Colours::white.withAlpha(0.96f));
+                    g.setFont(juce::FontOptions(20.0f, juce::Font::bold));
+                    g.drawText(f.name, c.removeFromTop(32.0f).toNearestInt(), juce::Justification::centredLeft);
+                    g.setColour(f.colour.withAlpha(0.86f));
+                    g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+                    g.drawText(f.tag, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
+                    c.removeFromTop(7.0f);
+                    g.setColour(juce::Colours::white.withAlpha(0.70f));
+                    g.setFont(juce::FontOptions(14.0f));
+                    g.drawFittedText(f.story, c.toNearestInt(), juce::Justification::topLeft, 7);
+                    drawFutureVisual(g, visual, f.colour, f.visual);
+                    inner.removeFromTop(14.0f);
+                }
+
+                auto footer = inner.removeFromTop(54.0f);
+                g.setColour(gold.withAlpha(0.82f));
+                g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+                g.drawText("VELORIA  //  THE INSTRUMENT FROM THE SYNTHESIS HISTORY THAT NEVER HAPPENED",
+                           footer.toNearestInt(), juce::Justification::centred);
             }
 
-            auto footer = inner.removeFromTop(54.0f);
-            g.setColour(gold.withAlpha(0.82f));
-            g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-            g.drawText("VELORIA  //  THE INSTRUMENT FROM THE SYNTHESIS HISTORY THAT NEVER HAPPENED",
-                       footer.toNearestInt(), juce::Justification::centred);
-
-            scrollState.restore();
             drawScrollbar(g, bounds);
         }
 
