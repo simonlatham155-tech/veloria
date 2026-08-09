@@ -157,9 +157,9 @@ private:
             auto xenakis = realRow.removeFromLeft((realRow.getWidth() - 14.0f) * 0.5f);
             realRow.removeFromLeft(14.0f);
             auto brown = realRow;
-            historyCard(xenakis, "1950s-1970s", "IANNIS XENAKIS", "THE MOOG MOMENT  //  INVENT THE LANGUAGE",
+            historyCard(xenakis, "1950s-1970s", "IANNIS XENAKIS", "THE FOUNDATIONAL MOMENT  //  INVENT THE LANGUAGE",
                         "Dynamic Stochastic Synthesis makes the waveform itself a probability system. Breakpoints, random walks, reflecting barriers and statistical distributions become a new grammar for generating sound.", gold);
-            historyCard(brown, "2004-2005", "ANDREW R. BROWN + GREG JENKINS", "THE ROLAND MOMENT  //  MAKE IT AN INSTRUMENT",
+            historyCard(brown, "2004-2005", "ANDREW R. BROWN + GREG JENKINS", "THE INSTRUMENT MOMENT  //  MAKE IT PLAYABLE",
                         "IDSS turns DSS toward real-time musical interaction: finer step control, pitch stabilisation, interpolation choices and stochastic percussion gestures. The research language becomes something a performer can deliberately play.", magenta);
 
             inner.removeFromTop(14.0f);
