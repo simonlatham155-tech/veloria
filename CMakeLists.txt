@@ -31,25 +31,134 @@ juce_add_plugin(Veloria
 
 juce_generate_juce_header(Veloria)
 
-# V1 editor build. The supplied artwork is a visual reference only: no image
-# assets are embedded or displayed in Veloria.
+# V1 editor build. No picture/image assets are embedded or displayed.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp" VELORIA_EDITOR_SOURCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.h" VELORIA_EDITOR_HEADER)
 
-# Match the compact geometric VELORIA wordmark from the approved reference.
-# LATHAMAUDIO and every other header element remain unchanged.
-string(REPLACE
-    "const auto stroke = juce::jmax(1.0f, h * 0.045f);\n    const float glyphW = h * 0.78f;\n    const float gap = h * 0.16f;"
-    "const auto stroke = juce::jmax(1.2f, h * 0.060f);\n    const float glyphW = h * 0.70f;\n    const float gap = h * 0.055f;"
-    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+# Replace only the VELORIA wordmark. LATHAMAUDIO and the rest of the header remain untouched.
+set(OLD_WORDMARK [[void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<float> area)
+{
+    const auto h = area.getHeight();
+    const auto stroke = juce::jmax(1.0f, h * 0.045f);
+    const float glyphW = h * 0.78f;
+    const float gap = h * 0.16f;
+    const float totalW = glyphW * 7.0f + gap * 6.0f;
+    const float x0 = area.getCentreX() - totalW * 0.5f;
+    const float top = area.getY() + h * 0.10f;
+    const float mid = area.getY() + h * 0.50f;
+    const float bot = area.getY() + h * 0.90f;
 
-string(REPLACE
-    "g.setColour(juce::Colours::white.withAlpha(0.94f));\n    juce::Path p;"
-    "juce::ColourGradient veloriaGold(juce::Colour::fromRGB(255, 246, 213), area.getX(), area.getCentreY(),\n                                      juce::Colour::fromRGB(218, 164, 92), area.getRight(), area.getCentreY(), false);\n    veloriaGold.addColour(0.52, juce::Colour::fromRGB(255, 232, 174));\n    g.setGradientFill(veloriaGold);\n    juce::Path p;"
-    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+    g.setColour(juce::Colours::white.withAlpha(0.94f));
+    juce::Path p;
+    auto X = [=](int i) { return x0 + (glyphW + gap) * (float) i; };
 
-# What If is a scrollable written/diagrammatic feature. The former large visual
-# story panel is removed completely; there is no poster/photo at top or bottom.
+    p.startNewSubPath(X(0), top); p.lineTo(X(0) + glyphW * 0.50f, bot); p.lineTo(X(0) + glyphW, top);
+    p.startNewSubPath(X(1) + glyphW, top); p.lineTo(X(1), top); p.lineTo(X(1), bot); p.lineTo(X(1) + glyphW, bot);
+    p.startNewSubPath(X(1), mid); p.lineTo(X(1) + glyphW * 0.72f, mid);
+    p.startNewSubPath(X(2), top); p.lineTo(X(2), bot); p.lineTo(X(2) + glyphW, bot);
+    p.startNewSubPath(X(3) + glyphW * 0.22f, top); p.lineTo(X(3) + glyphW * 0.78f, top); p.lineTo(X(3) + glyphW, top + h * 0.22f);
+    p.lineTo(X(3) + glyphW, bot - h * 0.22f); p.lineTo(X(3) + glyphW * 0.78f, bot); p.lineTo(X(3) + glyphW * 0.22f, bot);
+    p.lineTo(X(3), bot - h * 0.22f); p.lineTo(X(3), top + h * 0.22f); p.closeSubPath();
+    p.startNewSubPath(X(4), bot); p.lineTo(X(4), top); p.lineTo(X(4) + glyphW * 0.68f, top); p.lineTo(X(4) + glyphW, top + h * 0.18f);
+    p.lineTo(X(4) + glyphW, mid - h * 0.06f); p.lineTo(X(4) + glyphW * 0.68f, mid + h * 0.05f); p.lineTo(X(4), mid + h * 0.05f);
+    p.startNewSubPath(X(4) + glyphW * 0.53f, mid + h * 0.05f); p.lineTo(X(4) + glyphW, bot);
+    p.startNewSubPath(X(5) + glyphW * 0.5f, top); p.lineTo(X(5) + glyphW * 0.5f, bot);
+    p.startNewSubPath(X(6), bot); p.lineTo(X(6) + glyphW * 0.50f, top); p.lineTo(X(6) + glyphW, bot);
+    p.startNewSubPath(X(6) + glyphW * 0.24f, mid + h * 0.08f); p.lineTo(X(6) + glyphW * 0.76f, mid + h * 0.08f);
+
+    g.strokePath(p, juce::PathStrokeType(stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+]])
+
+set(NEW_WORDMARK [[void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<float> area)
+{
+    // Ailerons-inspired custom vector wordmark: clean, open, geometric, and portable.
+    const auto h = area.getHeight();
+    const float top = area.getY() + h * 0.12f;
+    const float bot = area.getY() + h * 0.88f;
+    const float mid = (top + bot) * 0.5f;
+    const float glyphH = bot - top;
+    const float stroke = juce::jmax(1.35f, h * 0.058f);
+
+    const std::array<float, 7> widths {{ 34.0f, 39.0f, 33.0f, 40.0f, 40.0f, 12.0f, 35.0f }};
+    const float gap = 8.0f;
+    float totalW = gap * 6.0f;
+    for (auto w : widths) totalW += w;
+    const float scale = juce::jmin(1.0f, area.getWidth() / totalW);
+    const float x0 = area.getCentreX() - totalW * scale * 0.5f;
+
+    juce::ColourGradient metal(juce::Colour::fromRGB(255, 247, 216), area.getX(), area.getCentreY(),
+                               juce::Colour::fromRGB(214, 165, 96), area.getRight(), area.getCentreY(), false);
+    metal.addColour(0.50, juce::Colour::fromRGB(255, 231, 172));
+    g.setGradientFill(metal);
+
+    juce::Path p;
+    float x = x0;
+    auto sx = [scale](float v) { return v * scale; };
+    auto next = [&](int i) { const auto here = x; x += sx(widths[(std::size_t)i] + (i < 6 ? gap : 0.0f)); return here; };
+
+    // V
+    {
+        const auto a = next(0), w = sx(widths[0]);
+        p.startNewSubPath(a, top); p.lineTo(a + w * 0.50f, bot); p.lineTo(a + w, top);
+    }
+    // E - open rounded right side, like the Ailerons reference
+    {
+        const auto a = next(1), w = sx(widths[1]);
+        p.startNewSubPath(a + w, top); p.lineTo(a + w * 0.18f, top);
+        p.cubicTo(a + w * 0.05f, top, a, top + glyphH * 0.08f, a, top + glyphH * 0.22f);
+        p.lineTo(a, bot - glyphH * 0.22f);
+        p.cubicTo(a, bot - glyphH * 0.08f, a + w * 0.05f, bot, a + w * 0.18f, bot);
+        p.lineTo(a + w, bot);
+        p.startNewSubPath(a, mid); p.lineTo(a + w * 0.72f, mid);
+    }
+    // L
+    {
+        const auto a = next(2), w = sx(widths[2]);
+        p.startNewSubPath(a, top); p.lineTo(a, bot); p.lineTo(a + w, bot);
+    }
+    // O - rounded rectangle
+    {
+        const auto a = next(3), w = sx(widths[3]);
+        const float r = glyphH * 0.22f;
+        p.startNewSubPath(a + r, top);
+        p.lineTo(a + w - r, top);
+        p.cubicTo(a + w - r * 0.35f, top, a + w, top + r * 0.35f, a + w, top + r);
+        p.lineTo(a + w, bot - r);
+        p.cubicTo(a + w, bot - r * 0.35f, a + w - r * 0.35f, bot, a + w - r, bot);
+        p.lineTo(a + r, bot);
+        p.cubicTo(a + r * 0.35f, bot, a, bot - r * 0.35f, a, bot - r);
+        p.lineTo(a, top + r);
+        p.cubicTo(a, top + r * 0.35f, a + r * 0.35f, top, a + r, top);
+    }
+    // R - rounded bowl with clean diagonal leg
+    {
+        const auto a = next(4), w = sx(widths[4]);
+        p.startNewSubPath(a, bot); p.lineTo(a, top);
+        p.lineTo(a + w * 0.62f, top);
+        p.cubicTo(a + w * 0.88f, top, a + w, top + glyphH * 0.10f, a + w, top + glyphH * 0.25f);
+        p.cubicTo(a + w, top + glyphH * 0.42f, a + w * 0.88f, mid, a + w * 0.62f, mid);
+        p.lineTo(a, mid);
+        p.startNewSubPath(a + w * 0.58f, mid); p.lineTo(a + w, bot);
+    }
+    // I
+    {
+        const auto a = next(5), w = sx(widths[5]);
+        p.startNewSubPath(a + w * 0.5f, top); p.lineTo(a + w * 0.5f, bot);
+    }
+    // A - open apex, no crossbar, matching the reference character
+    {
+        const auto a = next(6), w = sx(widths[6]);
+        p.startNewSubPath(a, bot); p.lineTo(a + w * 0.50f, top); p.lineTo(a + w, bot);
+    }
+
+    g.strokePath(p, juce::PathStrokeType(stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+]])
+
+string(REPLACE "${OLD_WORDMARK}" "${NEW_WORDMARK}" VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+
+# What If remains text/diagram based. No picture panel is shown.
 set(WHATIF_TOP_VISUAL [[                inner.removeFromTop(14.0f);
                 drawHeroIllustration(g, inner.removeFromTop(290.0f), panel, gold, purple, magenta, cyan);
                 inner.removeFromTop(24.0f);
@@ -57,9 +166,6 @@ set(WHATIF_TOP_VISUAL [[                inner.removeFromTop(14.0f);
 set(WHATIF_TOP_REPLACEMENT [[                inner.removeFromTop(14.0f);
 ]])
 string(REPLACE "${WHATIF_TOP_VISUAL}" "${WHATIF_TOP_REPLACEMENT}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
-
-# Reduce the scroll document to the actual history/evolution content now that
-# the large picture panel is gone.
 string(REPLACE "static constexpr float contentHeight = 1920.0f;"
                "static constexpr float contentHeight = 1660.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
