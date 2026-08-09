@@ -52,9 +52,6 @@ public:
     VisualState getVisualState() const noexcept;
     bool isDrumMode() const noexcept { return drumMode; }
 
-    // Historical operating model. Brown IDSS mode honours Andrew R. Brown's
-    // Interactive Dynamic Stochastic Synthesizer as an engine contribution,
-    // not as a cosmetic preset. It changes the oscillator rules for every voice.
     void setBrownIdssMode(bool shouldUseBrownModel) noexcept
     {
         brownIdssMode.store(shouldUseBrownModel, std::memory_order_relaxed);
@@ -97,93 +94,117 @@ private:
         tom
     };
 
-    // Stable wrapper around JUCE's ADSR. Identical parameter writes are ignored,
-    // and note-off also starts a sample-accurate release deadline. This preserves
-    // the normal ADSR curve while guaranteeing that a tonal voice cannot remain
-    // active beyond the RELEASE time if the underlying ADSR state ever sticks.
+    // Deterministic tonal envelope owned by Veloria rather than JUCE's ADSR state
+    // machine. Note-off captures the current level and performs a finite linear
+    // release to exactly zero, after which isActive() is false. This gives the voice
+    // lifecycle one authoritative end condition and prevents stuck tonal voices.
     class StableADSR
     {
     public:
-        void setSampleRate(double newSampleRate)
+        void setSampleRate(double newSampleRate) noexcept
         {
             sampleRate = juce::jmax(1.0, newSampleRate);
-            adsr.setSampleRate(sampleRate);
         }
 
-        void setParameters(const juce::ADSR::Parameters& newParameters)
+        void setParameters(const juce::ADSR::Parameters& newParameters) noexcept
         {
-            constexpr float epsilon = 1.0e-6f;
-            const auto differs = [](float a, float b) noexcept
-            {
-                return std::abs(a - b) > epsilon;
-            };
-
-            const bool changed = ! hasParameters
-                || differs(newParameters.attack,  parameters.attack)
-                || differs(newParameters.decay,   parameters.decay)
-                || differs(newParameters.sustain, parameters.sustain)
-                || differs(newParameters.release, parameters.release);
-
-            if (! changed)
-                return;
-
-            parameters = newParameters;
-            hasParameters = true;
-            adsr.setParameters(parameters);
+            parameters.attack = juce::jmax(0.0f, newParameters.attack);
+            parameters.decay = juce::jmax(0.0f, newParameters.decay);
+            parameters.sustain = juce::jlimit(0.0f, 1.0f, newParameters.sustain);
+            parameters.release = juce::jmax(0.0f, newParameters.release);
         }
 
         void reset() noexcept
         {
-            adsr.reset();
-            releaseActive = false;
+            state = State::idle;
+            level = 0.0f;
+            releaseDelta = 0.0f;
             releaseSamplesRemaining = 0;
         }
 
         void noteOn() noexcept
         {
-            releaseActive = false;
+            level = 0.0f;
+            state = State::attack;
+            releaseDelta = 0.0f;
             releaseSamplesRemaining = 0;
-            adsr.noteOn();
         }
 
         void noteOff() noexcept
         {
-            adsr.noteOff();
-            releaseActive = true;
-            const auto seconds = juce::jmax(0.0f, parameters.release);
-            releaseSamplesRemaining = juce::jmax<std::uint64_t>(
+            if (state == State::idle)
+                return;
+
+            const auto releaseSamples = juce::jmax<std::uint64_t>(
                 1,
-                static_cast<std::uint64_t>(std::ceil(static_cast<double>(seconds) * sampleRate)));
+                static_cast<std::uint64_t>(std::ceil(static_cast<double>(parameters.release) * sampleRate)));
+            releaseSamplesRemaining = releaseSamples;
+            releaseDelta = level / static_cast<float>(releaseSamples);
+            state = State::release;
         }
 
         float getNextSample() noexcept
         {
-            const auto sample = adsr.getNextSample();
-
-            if (releaseActive)
+            switch (state)
             {
-                if (releaseSamplesRemaining > 0)
-                    --releaseSamplesRemaining;
+                case State::idle:
+                    level = 0.0f;
+                    break;
 
-                if (releaseSamplesRemaining == 0)
+                case State::attack:
                 {
-                    adsr.reset();
-                    releaseActive = false;
+                    const auto samples = juce::jmax(1.0, static_cast<double>(parameters.attack) * sampleRate);
+                    level += static_cast<float>(1.0 / samples);
+                    if (level >= 1.0f)
+                    {
+                        level = 1.0f;
+                        state = State::decay;
+                    }
+                    break;
                 }
+
+                case State::decay:
+                {
+                    const auto target = parameters.sustain;
+                    const auto samples = juce::jmax(1.0, static_cast<double>(parameters.decay) * sampleRate);
+                    const auto delta = static_cast<float>((1.0 - static_cast<double>(target)) / samples);
+                    level -= delta;
+                    if (level <= target)
+                    {
+                        level = target;
+                        state = State::sustain;
+                    }
+                    break;
+                }
+
+                case State::sustain:
+                    level = parameters.sustain;
+                    break;
+
+                case State::release:
+                    if (releaseSamplesRemaining > 0)
+                    {
+                        level = juce::jmax(0.0f, level - releaseDelta);
+                        --releaseSamplesRemaining;
+                    }
+                    if (releaseSamplesRemaining == 0 || level <= 1.0e-7f)
+                        reset();
+                    break;
             }
 
-            return sample;
+            return level;
         }
 
-        bool isActive() const noexcept { return adsr.isActive(); }
+        bool isActive() const noexcept { return state != State::idle; }
 
     private:
-        juce::ADSR adsr;
+        enum class State { idle, attack, decay, sustain, release };
         juce::ADSR::Parameters parameters {};
+        State state { State::idle };
         double sampleRate { 44100.0 };
+        float level { 0.0f };
+        float releaseDelta { 0.0f };
         std::uint64_t releaseSamplesRemaining { 0 };
-        bool releaseActive { false };
-        bool hasParameters { false };
     };
 
     struct Voice
