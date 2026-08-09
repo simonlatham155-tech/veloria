@@ -15,7 +15,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 juce_add_plugin(Veloria
-    COMPANY_NAME "Latham Audio"
+    COMPANY_NAME "LATHAMAUDIO"
     BUNDLE_ID com.lathamaudio.veloria
     PLUGIN_MANUFACTURER_CODE Latm
     PLUGIN_CODE Vlra
