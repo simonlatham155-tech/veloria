@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Veloria VERSION 0.1.1 LANGUAGES C CXX)
+project(Veloria VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,13 +31,25 @@ juce_add_plugin(Veloria
 
 juce_generate_juce_header(Veloria)
 
-# Build the clean V1 editor from generated copies so the What If story can be
-# laid out correctly without carrying the temporary MIDI diagnostic UI forward.
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginProcessor.cpp" VELORIA_PROCESSOR_SOURCE)
+# V1 editor build. The supplied artwork is a visual reference only: no image
+# assets are embedded or displayed in Veloria.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp" VELORIA_EDITOR_SOURCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.h" VELORIA_EDITOR_HEADER)
 
-# The visual story belongs at the end of the What If narrative, not at the top.
+# Match the compact geometric VELORIA wordmark from the approved reference.
+# LATHAMAUDIO and every other header element remain unchanged.
+string(REPLACE
+    "const auto stroke = juce::jmax(1.0f, h * 0.045f);\n    const float glyphW = h * 0.78f;\n    const float gap = h * 0.16f;"
+    "const auto stroke = juce::jmax(1.2f, h * 0.060f);\n    const float glyphW = h * 0.70f;\n    const float gap = h * 0.055f;"
+    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+
+string(REPLACE
+    "g.setColour(juce::Colours::white.withAlpha(0.94f));\n    juce::Path p;"
+    "juce::ColourGradient veloriaGold(juce::Colour::fromRGB(255, 246, 213), area.getX(), area.getCentreY(),\n                                      juce::Colour::fromRGB(218, 164, 92), area.getRight(), area.getCentreY(), false);\n    veloriaGold.addColour(0.52, juce::Colour::fromRGB(255, 232, 174));\n    g.setGradientFill(veloriaGold);\n    juce::Path p;"
+    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+
+# What If is a scrollable written/diagrammatic feature. The former large visual
+# story panel is removed completely; there is no poster/photo at top or bottom.
 set(WHATIF_TOP_VISUAL [[                inner.removeFromTop(14.0f);
                 drawHeroIllustration(g, inner.removeFromTop(290.0f), panel, gold, purple, magenta, cyan);
                 inner.removeFromTop(24.0f);
@@ -46,29 +58,20 @@ set(WHATIF_TOP_REPLACEMENT [[                inner.removeFromTop(14.0f);
 ]])
 string(REPLACE "${WHATIF_TOP_VISUAL}" "${WHATIF_TOP_REPLACEMENT}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
-set(WHATIF_FOOTER [[                auto footer = inner.removeFromTop(54.0f);
-]])
-set(WHATIF_BOTTOM_VISUAL [[                inner.removeFromTop(26.0f);
-                sectionLabel("THE ALTERNATIVE HISTORY  //  THE VISUAL PAYOFF", gold);
-                drawHeroIllustration(g, inner.removeFromTop(360.0f), panel, gold, purple, magenta, cyan);
-                inner.removeFromTop(28.0f);
-
-                auto footer = inner.removeFromTop(54.0f);
-]])
-string(REPLACE "${WHATIF_FOOTER}" "${WHATIF_BOTTOM_VISUAL}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
+# Reduce the scroll document to the actual history/evolution content now that
+# the large picture panel is gone.
 string(REPLACE "static constexpr float contentHeight = 1920.0f;"
-               "static constexpr float contentHeight = 2140.0f;"
+               "static constexpr float contentHeight = 1660.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Editor.cpp" "${VELORIA_EDITOR_SOURCE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PluginEditor.h" "${VELORIA_EDITOR_HEADER}")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaProcessor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaEditor.cpp" "${VELORIA_EDITOR_SOURCE}")
 
 target_sources(Veloria
     PRIVATE
-        "${CMAKE_CURRENT_BINARY_DIR}/VeloriaProcessor.cpp"
+        Source/PluginProcessor.cpp
         Source/PluginProcessor.h
-        "${CMAKE_CURRENT_BINARY_DIR}/VeloriaEditor.cpp"
+        "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Editor.cpp"
         "${CMAKE_CURRENT_BINARY_DIR}/PluginEditor.h"
         Source/dsp/StochasticOscillator.h
 )
