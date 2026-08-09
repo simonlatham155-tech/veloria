@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include "dsp/StochasticOscillator.h"
 
@@ -111,11 +112,17 @@ private:
 
         void setParameters(const juce::ADSR::Parameters& newParameters)
         {
+            constexpr float epsilon = 1.0e-6f;
+            const auto differs = [](float a, float b) noexcept
+            {
+                return std::abs(a - b) > epsilon;
+            };
+
             const bool changed = ! hasParameters
-                || newParameters.attack  != parameters.attack
-                || newParameters.decay   != parameters.decay
-                || newParameters.sustain != parameters.sustain
-                || newParameters.release != parameters.release;
+                || differs(newParameters.attack,  parameters.attack)
+                || differs(newParameters.decay,   parameters.decay)
+                || differs(newParameters.sustain, parameters.sustain)
+                || differs(newParameters.release, parameters.release);
 
             if (! changed)
                 return;
