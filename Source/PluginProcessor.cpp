@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <cmath>
+#include <initializer_list>
+#include <iterator>
 
 namespace
 {
@@ -59,7 +61,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::creat
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("timeWalk", "Time Walk", juce::NormalisableRange<float>(0.0f, 1.0f), 0.08f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("ampMirror", "Amplitude Barrier", juce::NormalisableRange<float>(0.05f, 1.0f), 0.88f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("timeMirror", "Time Barrier", juce::NormalisableRange<float>(0.05f, 1.0f), 0.45f));
-
     layout.push_back(std::make_unique<juce::AudioParameterInt>("ampDist", "Amplitude Distribution", 0, 5, 0));
     layout.push_back(std::make_unique<juce::AudioParameterInt>("timeDist", "Time Distribution", 0, 5, 0));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("ampStep", "Amplitude Step", juce::NormalisableRange<float>(0.10f, 2.0f), 1.0f));
@@ -69,7 +70,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::creat
     layout.push_back(std::make_unique<juce::AudioParameterInt>("breakpoints", "Breakpoints", 4, 12, 12));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("pitchStability", "Pitch Stability", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("curve", "Interpolation Curve", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
-
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("attack", "Attack", juce::NormalisableRange<float>(0.001f, 5.0f, 0.0f, 0.35f), 0.08f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("decay", "Decay", juce::NormalisableRange<float>(0.01f, 6.0f, 0.0f, 0.35f), 0.45f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("sustain", "Sustain", juce::NormalisableRange<float>(0.0f, 1.0f), 0.88f));
@@ -91,6 +91,7 @@ void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
         voice.percussion = false;
         voice.drumKind = DrumKind::none;
         voice.midiNote = -1;
+        voice.pressure = 0.0f;
     }
     outputGain.prepare({ currentSampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
     updateVoiceParameters();
@@ -116,6 +117,22 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         const auto message = metadata.getMessage();
         if (message.isController())
             handleMidiController(message);
+
+        if (message.isAftertouch())
+        {
+            const auto pressure = juce::jlimit(0.0f, 1.0f, static_cast<float>(message.getAfterTouchValue()) / 127.0f);
+            for (auto& voice : voices)
+                if (voice.active && ! voice.percussion && voice.midiNote == message.getNoteNumber())
+                    voice.pressure = pressure;
+        }
+        else if (message.isChannelPressure())
+        {
+            const auto pressure = juce::jlimit(0.0f, 1.0f, static_cast<float>(message.getChannelPressureValue()) / 127.0f);
+            for (auto& voice : voices)
+                if (voice.active && ! voice.percussion)
+                    voice.pressure = pressure;
+        }
+
         if (message.isNoteOn())
             startNote(message.getNoteNumber(), message.getFloatVelocity());
         else if (message.isNoteOff())
@@ -123,6 +140,9 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
         else if (message.isAllNotesOff() || message.isAllSoundOff())
             stopAllVoices(false);
     }
+
+    // Reapply once after MIDI so pressure changes affect the same block.
+    updateVoiceParameters();
 
     const auto voiceGain = 0.58f / std::sqrt(static_cast<float>(maxVoices));
     double energyAccumulator = 0.0;
@@ -173,6 +193,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                     voice.percussion = false;
                     voice.drumKind = DrumKind::none;
                     voice.midiNote = -1;
+                    voice.pressure = 0.0f;
                 }
                 continue;
             }
@@ -183,6 +204,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             {
                 voice.active = false;
                 voice.midiNote = -1;
+                voice.pressure = 0.0f;
             }
         }
 
@@ -219,6 +241,7 @@ void VeloriaAudioProcessor::startNote(int midiNote, float velocity)
     voice.midiNote = midiNote;
     voice.age = ++voiceCounter;
     voice.gain = 0.70f + juce::jlimit(0.0f, 1.0f, velocity) * 0.30f;
+    voice.pressure = 0.0f;
 
     const auto baseSeed = static_cast<std::uint32_t>(parameters.getRawParameterValue("seed")->load());
     const auto voiceIndex = static_cast<std::uint32_t>(&voice - voices.data());
@@ -271,6 +294,7 @@ void VeloriaAudioProcessor::configureDrumVoice(Voice& voice, DrumKind kind, int 
     voice.midiNote = midiNote;
     voice.age = ++voiceCounter;
     voice.percussionSample = 0;
+    voice.pressure = 0.0f;
 
     float durationSeconds = 0.30f, attackMs = 0.7f;
     float startAmpWalk = 0.70f, endAmpWalk = 0.02f;
@@ -366,6 +390,7 @@ void VeloriaAudioProcessor::stopAllVoices(bool allowTailOff)
             voice.drumKind = DrumKind::none;
             voice.midiNote = -1;
             voice.percussionSample = 0;
+            voice.pressure = 0.0f;
         }
     }
 }
@@ -383,6 +408,7 @@ VeloriaAudioProcessor::Voice& VeloriaAudioProcessor::findVoiceToStart()
     oldest->active = false;
     oldest->percussion = false;
     oldest->drumKind = DrumKind::none;
+    oldest->pressure = 0.0f;
     return *oldest;
 }
 
@@ -402,8 +428,6 @@ void VeloriaAudioProcessor::updateVoiceParameters()
     const auto pitchStability = parameters.getRawParameterValue("pitchStability")->load();
     const auto curve = parameters.getRawParameterValue("curve")->load();
 
-    // CHAOS is a true DSS macro: it increases random-walk reach and step energy
-    // while relaxing pitch anchoring. It never adds external noise or distortion.
     const auto chaosSquared = chaos * chaos;
     const auto effectiveAmpStep = juce::jlimit(0.10f, 2.0f, ampStep * (1.0f + chaos * 0.85f));
     const auto effectiveTimeStep = juce::jlimit(0.10f, 2.0f, timeStep * (1.0f + chaos * 0.85f));
@@ -419,19 +443,25 @@ void VeloriaAudioProcessor::updateVoiceParameters()
 
     for (auto& voice : voices)
     {
+        const auto expression = voice.percussion ? 0.0f : juce::jlimit(0.0f, 1.0f, voice.pressure);
+        const auto expressiveAmpStep = juce::jlimit(0.10f, 2.0f, effectiveAmpStep * (1.0f + expression * 0.34f));
+        const auto expressiveTimeStep = juce::jlimit(0.10f, 2.0f, effectiveTimeStep * (1.0f + expression * 0.28f));
+        const auto expressivePitchLock = juce::jlimit(0.0f, 1.0f, effectivePitchStability * (1.0f - expression * 0.16f));
+
         voice.oscillator.setAmplitudeDistribution(ampDist);
         voice.oscillator.setTimeDistribution(timeDist);
-        voice.oscillator.setAmplitudeStepScale(effectiveAmpStep);
-        voice.oscillator.setTimeStepScale(effectiveTimeStep);
+        voice.oscillator.setAmplitudeStepScale(expressiveAmpStep);
+        voice.oscillator.setTimeStepScale(expressiveTimeStep);
         voice.oscillator.setWalkOrder(walkOrder);
         voice.oscillator.setActiveBreakpointCount(breakpoints);
-        voice.oscillator.setPitchStability(effectivePitchStability);
+        voice.oscillator.setPitchStability(expressivePitchLock);
         voice.oscillator.setInterpolationShape(curve);
 
         if (voice.percussion)
             continue;
-        voice.oscillator.setAmplitudeWalk(effectiveAmpWalk);
-        voice.oscillator.setTimeWalk(effectiveTimeWalk);
+
+        voice.oscillator.setAmplitudeWalk(juce::jlimit(0.0f, 1.0f, effectiveAmpWalk + expression * 0.12f));
+        voice.oscillator.setTimeWalk(juce::jlimit(0.0f, 1.0f, effectiveTimeWalk + expression * 0.08f));
         voice.oscillator.setAmplitudeMirror(ampMirror);
         voice.oscillator.setTimeMirror(timeMirror);
         voice.envelope.setParameters(env);
@@ -529,21 +559,107 @@ void VeloriaAudioProcessor::applyFactoryPreset(int index)
 void VeloriaAudioProcessor::discover()
 {
     if (drumMode) { discoverDrumField(); return; }
+
+    const auto family = currentProgram;
     currentProgram = -1;
-    setParameterValue("ampWalk",0.01f+discoveryRandom.nextFloat()*0.60f);
-    setParameterValue("timeWalk",0.005f+discoveryRandom.nextFloat()*0.48f);
-    setParameterValue("ampMirror",0.25f+discoveryRandom.nextFloat()*0.75f);
-    setParameterValue("timeMirror",0.08f+discoveryRandom.nextFloat()*0.82f);
-    setParameterValue("ampDist",static_cast<float>(discoveryRandom.nextInt(6)));
-    setParameterValue("timeDist",static_cast<float>(discoveryRandom.nextInt(6)));
-    setParameterValue("ampStep",0.35f+discoveryRandom.nextFloat()*1.45f);
-    setParameterValue("timeStep",0.35f+discoveryRandom.nextFloat()*1.45f);
-    setParameterValue("walkOrder",discoveryRandom.nextBool()?1.0f:2.0f);
-    setParameterValue("breakpoints",static_cast<float>(4+discoveryRandom.nextInt(9)));
-    setParameterValue("pitchStability",0.55f+discoveryRandom.nextFloat()*0.45f);
-    setParameterValue("curve",discoveryRandom.nextFloat());
-    setParameterValue("chaos",discoveryRandom.nextFloat()*0.65f);
-    setParameterValue("seed",static_cast<float>(1+discoveryRandom.nextInt(999998)));
+    drumMode = false;
+
+    auto range = [this](float lo, float hi) { return lo + discoveryRandom.nextFloat() * (hi - lo); };
+    auto intRange = [this](int lo, int hi) { return static_cast<float>(lo + discoveryRandom.nextInt(hi - lo + 1)); };
+    auto choose = [this](std::initializer_list<int> choices)
+    {
+        auto index = discoveryRandom.nextInt(static_cast<int>(choices.size()));
+        auto it = choices.begin();
+        std::advance(it, index);
+        return static_cast<float>(*it);
+    };
+
+    switch (family)
+    {
+        case 1: // Piano: a 1970s stochastic-synth attempt at a struck piano identity.
+            setParameterValue("ampWalk",range(.025f,.085f)); setParameterValue("timeWalk",range(.012f,.045f));
+            setParameterValue("ampMirror",range(.60f,.82f)); setParameterValue("timeMirror",range(.12f,.30f));
+            setParameterValue("ampDist",choose({2,4})); setParameterValue("timeDist",choose({1,2}));
+            setParameterValue("ampStep",range(.85f,1.45f)); setParameterValue("timeStep",range(.45f,.82f));
+            setParameterValue("breakpoints",intRange(8,12)); setParameterValue("pitchStability",range(.97f,1.0f));
+            setParameterValue("curve",range(.22f,.48f)); setParameterValue("chaos",range(.02f,.14f));
+            setParameterValue("attack",range(.001f,.012f)); setParameterValue("decay",range(.55f,1.35f));
+            setParameterValue("sustain",range(.04f,.22f)); setParameterValue("release",range(.28f,.95f)); break;
+        case 2: // Pad
+            setParameterValue("ampWalk",range(.09f,.24f)); setParameterValue("timeWalk",range(.06f,.17f));
+            setParameterValue("ampMirror",range(.78f,1.0f)); setParameterValue("timeMirror",range(.42f,.78f));
+            setParameterValue("ampDist",choose({1,2,3})); setParameterValue("timeDist",choose({1,2,3}));
+            setParameterValue("ampStep",range(.38f,.82f)); setParameterValue("timeStep",range(.42f,.92f));
+            setParameterValue("breakpoints",intRange(10,12)); setParameterValue("pitchStability",range(.90f,1.0f));
+            setParameterValue("curve",range(.58f,1.0f)); setParameterValue("chaos",range(.05f,.24f));
+            setParameterValue("attack",range(.55f,2.4f)); setParameterValue("decay",range(.9f,2.8f));
+            setParameterValue("sustain",range(.68f,.96f)); setParameterValue("release",range(2.0f,6.5f)); break;
+        case 3: // Strings
+            setParameterValue("ampWalk",range(.055f,.15f)); setParameterValue("timeWalk",range(.035f,.11f));
+            setParameterValue("ampMirror",range(.72f,.94f)); setParameterValue("timeMirror",range(.30f,.62f));
+            setParameterValue("ampDist",choose({2,3})); setParameterValue("timeDist",choose({1,2}));
+            setParameterValue("ampStep",range(.48f,.90f)); setParameterValue("timeStep",range(.45f,.82f));
+            setParameterValue("breakpoints",intRange(10,12)); setParameterValue("pitchStability",range(.95f,1.0f));
+            setParameterValue("curve",range(.42f,.72f)); setParameterValue("chaos",range(.04f,.18f));
+            setParameterValue("attack",range(.12f,.75f)); setParameterValue("decay",range(.55f,1.5f));
+            setParameterValue("sustain",range(.68f,.92f)); setParameterValue("release",range(.9f,3.2f)); break;
+        case 4: // Bass
+            setParameterValue("ampWalk",range(.018f,.075f)); setParameterValue("timeWalk",range(.008f,.04f));
+            setParameterValue("ampMirror",range(.52f,.76f)); setParameterValue("timeMirror",range(.09f,.25f));
+            setParameterValue("ampDist",choose({1,2,3})); setParameterValue("timeDist",choose({1,2}));
+            setParameterValue("ampStep",range(.28f,.62f)); setParameterValue("timeStep",range(.24f,.55f));
+            setParameterValue("breakpoints",intRange(6,9)); setParameterValue("pitchStability",range(.98f,1.0f));
+            setParameterValue("curve",range(.08f,.28f)); setParameterValue("chaos",range(0.0f,.10f));
+            setParameterValue("attack",range(.002f,.025f)); setParameterValue("decay",range(.12f,.45f));
+            setParameterValue("sustain",range(.48f,.82f)); setParameterValue("release",range(.08f,.5f)); break;
+        case 5: // Lead
+            setParameterValue("ampWalk",range(.035f,.14f)); setParameterValue("timeWalk",range(.018f,.075f));
+            setParameterValue("ampMirror",range(.62f,.88f)); setParameterValue("timeMirror",range(.18f,.42f));
+            setParameterValue("ampDist",choose({2,3,4})); setParameterValue("timeDist",choose({1,2,3}));
+            setParameterValue("ampStep",range(.55f,1.05f)); setParameterValue("timeStep",range(.42f,.82f));
+            setParameterValue("breakpoints",intRange(7,10)); setParameterValue("pitchStability",range(.94f,1.0f));
+            setParameterValue("curve",range(.12f,.42f)); setParameterValue("chaos",range(.04f,.22f));
+            setParameterValue("attack",range(.002f,.08f)); setParameterValue("decay",range(.16f,.65f));
+            setParameterValue("sustain",range(.58f,.88f)); setParameterValue("release",range(.12f,.75f)); break;
+        case 6: // Bell
+            setParameterValue("ampWalk",range(.035f,.11f)); setParameterValue("timeWalk",range(.008f,.045f));
+            setParameterValue("ampMirror",range(.72f,.96f)); setParameterValue("timeMirror",range(.12f,.34f));
+            setParameterValue("ampDist",choose({4,5})); setParameterValue("timeDist",choose({3,4}));
+            setParameterValue("ampStep",range(.90f,1.55f)); setParameterValue("timeStep",range(.58f,1.05f));
+            setParameterValue("breakpoints",intRange(4,7)); setParameterValue("pitchStability",range(.88f,.98f));
+            setParameterValue("curve",range(.05f,.30f)); setParameterValue("chaos",range(.10f,.34f));
+            setParameterValue("attack",range(.001f,.008f)); setParameterValue("decay",range(.8f,2.2f));
+            setParameterValue("sustain",range(0.0f,.06f)); setParameterValue("release",range(.65f,2.6f)); break;
+        case 7: // Pluck
+            setParameterValue("ampWalk",range(.055f,.16f)); setParameterValue("timeWalk",range(.018f,.07f));
+            setParameterValue("ampMirror",range(.62f,.86f)); setParameterValue("timeMirror",range(.15f,.36f));
+            setParameterValue("ampDist",choose({1,2,4})); setParameterValue("timeDist",choose({1,2}));
+            setParameterValue("ampStep",range(.85f,1.55f)); setParameterValue("timeStep",range(.58f,1.05f));
+            setParameterValue("breakpoints",intRange(6,9)); setParameterValue("pitchStability",range(.97f,1.0f));
+            setParameterValue("curve",range(.22f,.58f)); setParameterValue("chaos",range(.06f,.24f));
+            setParameterValue("attack",range(.001f,.006f)); setParameterValue("decay",range(.16f,.48f));
+            setParameterValue("sustain",range(0.0f,.08f)); setParameterValue("release",range(.08f,.42f)); break;
+        case 8: // FX
+            setParameterValue("ampWalk",range(.28f,.82f)); setParameterValue("timeWalk",range(.24f,.78f));
+            setParameterValue("ampMirror",range(.72f,1.0f)); setParameterValue("timeMirror",range(.55f,1.0f));
+            setParameterValue("ampDist",choose({3,4,5})); setParameterValue("timeDist",choose({3,4,5}));
+            setParameterValue("ampStep",range(1.05f,2.0f)); setParameterValue("timeStep",range(1.0f,2.0f));
+            setParameterValue("breakpoints",intRange(7,12)); setParameterValue("pitchStability",range(.25f,.78f));
+            setParameterValue("curve",range(0.0f,.48f)); setParameterValue("chaos",range(.48f,.95f));
+            setParameterValue("attack",range(.001f,.25f)); setParameterValue("decay",range(.25f,1.5f));
+            setParameterValue("sustain",range(.25f,.82f)); setParameterValue("release",range(.4f,4.5f)); break;
+        case 0:
+        default: // GENDYN Core / free laboratory mode.
+            setParameterValue("ampWalk",range(.01f,.61f)); setParameterValue("timeWalk",range(.005f,.485f));
+            setParameterValue("ampMirror",range(.25f,1.0f)); setParameterValue("timeMirror",range(.08f,.90f));
+            setParameterValue("ampDist",intRange(0,5)); setParameterValue("timeDist",intRange(0,5));
+            setParameterValue("ampStep",range(.35f,1.80f)); setParameterValue("timeStep",range(.35f,1.80f));
+            setParameterValue("breakpoints",intRange(4,12)); setParameterValue("pitchStability",range(.55f,1.0f));
+            setParameterValue("curve",range(0.0f,1.0f)); setParameterValue("chaos",range(0.0f,.65f)); break;
+    }
+
+    setParameterValue("walkOrder", discoveryRandom.nextFloat() < 0.22f ? 1.0f : 2.0f);
+    setParameterValue("seed", static_cast<float>(1 + discoveryRandom.nextInt(999998)));
     stopAllVoices(false);
 }
 
