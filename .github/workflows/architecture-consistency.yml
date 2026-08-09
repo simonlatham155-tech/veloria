@@ -1,0 +1,394 @@
+name: Veloria architecture consistency pass
+
+on:
+  push:
+    branches: [agent/vst3-test-build]
+    paths:
+      - .github/workflows/architecture-consistency.yml
+
+permissions:
+  contents: write
+
+jobs:
+  align-architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/vst3-test-build
+          fetch-depth: 0
+
+      - name: Patch architecture consistency details
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"Missing expected source block: {label}")
+              return text.replace(old, new, 1)
+
+          # ---- Processor header: expose drum-mode state and add expressive pressure per voice.
+          p = Path('Source/PluginProcessor.h')
+          s = p.read_text()
+          s = replace_once(s,
+              '    VisualState getVisualState() const noexcept;\n',
+              '    VisualState getVisualState() const noexcept;\n    bool isDrumMode() const noexcept { return drumMode; }\n',
+              'public drum mode accessor')
+          s = replace_once(s,
+              '        float gain { 1.0f };\n',
+              '        float gain { 1.0f };\n        float pressure { 0.0f }; // poly/channel aftertouch: expressive stochastic pressure\n',
+              'voice pressure state')
+          p.write_text(s)
+
+          # ---- Processor: aftertouch, family-aware Discover and expressive pressure routed into DSS.
+          p = Path('Source/PluginProcessor.cpp')
+          s = p.read_text()
+          s = replace_once(s,
+          '''        if (message.isController())
+                      handleMidiController(message);
+                  if (message.isNoteOn())
+          ''',
+          '''        if (message.isController())
+                      handleMidiController(message);
+                  if (message.isAftertouch())
+                  {
+                      const auto pressure = juce::jlimit(0.0f, 1.0f, static_cast<float>(message.getAfterTouchValue()) / 127.0f);
+                      for (auto& voice : voices)
+                          if (voice.active && ! voice.percussion && voice.midiNote == message.getNoteNumber())
+                              voice.pressure = pressure;
+                  }
+                  else if (message.isChannelPressure())
+                  {
+                      const auto pressure = juce::jlimit(0.0f, 1.0f, static_cast<float>(message.getChannelPressureValue()) / 127.0f);
+                      for (auto& voice : voices)
+                          if (voice.active && ! voice.percussion)
+                              voice.pressure = pressure;
+                  }
+                  if (message.isNoteOn())
+          ''', 'aftertouch MIDI handling')
+
+          s = replace_once(s,
+              '    voice.gain = 0.70f + juce::jlimit(0.0f, 1.0f, velocity) * 0.30f;\n',
+              '    voice.gain = 0.70f + juce::jlimit(0.0f, 1.0f, velocity) * 0.30f;\n    voice.pressure = 0.0f;\n',
+              'reset tonal pressure')
+          s = replace_once(s,
+              '    voice.percussionSample = 0;\n\n    float durationSeconds',
+              '    voice.percussionSample = 0;\n    voice.pressure = 0.0f;\n\n    float durationSeconds',
+              'reset drum pressure')
+
+          s = replace_once(s,
+          '''        voice.oscillator.setAmplitudeDistribution(ampDist);
+                  voice.oscillator.setTimeDistribution(timeDist);
+                  voice.oscillator.setAmplitudeStepScale(effectiveAmpStep);
+                  voice.oscillator.setTimeStepScale(effectiveTimeStep);
+                  voice.oscillator.setWalkOrder(walkOrder);
+                  voice.oscillator.setActiveBreakpointCount(breakpoints);
+                  voice.oscillator.setPitchStability(effectivePitchStability);
+                  voice.oscillator.setInterpolationShape(curve);
+
+                  if (voice.percussion)
+                      continue;
+                  voice.oscillator.setAmplitudeWalk(effectiveAmpWalk);
+                  voice.oscillator.setTimeWalk(effectiveTimeWalk);
+          ''',
+          '''        const auto expression = voice.percussion ? 0.0f : juce::jlimit(0.0f, 1.0f, voice.pressure);
+                  const auto expressiveAmpStep = juce::jlimit(0.10f, 2.0f, effectiveAmpStep * (1.0f + expression * 0.34f));
+                  const auto expressiveTimeStep = juce::jlimit(0.10f, 2.0f, effectiveTimeStep * (1.0f + expression * 0.28f));
+                  const auto expressivePitchLock = juce::jlimit(0.0f, 1.0f, effectivePitchStability * (1.0f - expression * 0.16f));
+
+                  voice.oscillator.setAmplitudeDistribution(ampDist);
+                  voice.oscillator.setTimeDistribution(timeDist);
+                  voice.oscillator.setAmplitudeStepScale(expressiveAmpStep);
+                  voice.oscillator.setTimeStepScale(expressiveTimeStep);
+                  voice.oscillator.setWalkOrder(walkOrder);
+                  voice.oscillator.setActiveBreakpointCount(breakpoints);
+                  voice.oscillator.setPitchStability(expressivePitchLock);
+                  voice.oscillator.setInterpolationShape(curve);
+
+                  if (voice.percussion)
+                      continue;
+                  voice.oscillator.setAmplitudeWalk(juce::jlimit(0.0f, 1.0f, effectiveAmpWalk + expression * 0.12f));
+                  voice.oscillator.setTimeWalk(juce::jlimit(0.0f, 1.0f, effectiveTimeWalk + expression * 0.08f));
+          ''', 'route pressure into stochastic DSP')
+
+          old_discover = '''void VeloriaAudioProcessor::discover()
+          {
+              if (drumMode) { discoverDrumField(); return; }
+              currentProgram = -1;
+              setParameterValue("ampWalk",0.01f+discoveryRandom.nextFloat()*0.60f);
+              setParameterValue("timeWalk",0.005f+discoveryRandom.nextFloat()*0.48f);
+              setParameterValue("ampMirror",0.25f+discoveryRandom.nextFloat()*0.75f);
+              setParameterValue("timeMirror",0.08f+discoveryRandom.nextFloat()*0.82f);
+              setParameterValue("ampDist",static_cast<float>(discoveryRandom.nextInt(6)));
+              setParameterValue("timeDist",static_cast<float>(discoveryRandom.nextInt(6)));
+              setParameterValue("ampStep",0.35f+discoveryRandom.nextFloat()*1.45f);
+              setParameterValue("timeStep",0.35f+discoveryRandom.nextFloat()*1.45f);
+              setParameterValue("walkOrder",discoveryRandom.nextBool()?1.0f:2.0f);
+              setParameterValue("breakpoints",static_cast<float>(4+discoveryRandom.nextInt(9)));
+              setParameterValue("pitchStability",0.55f+discoveryRandom.nextFloat()*0.45f);
+              setParameterValue("curve",discoveryRandom.nextFloat());
+              setParameterValue("chaos",discoveryRandom.nextFloat()*0.65f);
+              setParameterValue("seed",static_cast<float>(1+discoveryRandom.nextInt(999998)));
+              stopAllVoices(false);
+          }
+          '''
+          new_discover = '''void VeloriaAudioProcessor::discover()
+          {
+              if (drumMode) { discoverDrumField(); return; }
+              const auto family = currentProgram;
+              currentProgram = -1;
+              drumMode = false;
+
+              auto range = [this](float lo, float hi) { return lo + discoveryRandom.nextFloat() * (hi - lo); };
+              auto intRange = [this](int lo, int hi) { return static_cast<float>(lo + discoveryRandom.nextInt(hi - lo + 1)); };
+              auto dist = [this](std::initializer_list<int> choices)
+              {
+                  const auto index = discoveryRandom.nextInt(static_cast<int>(choices.size()));
+                  auto it = choices.begin(); std::advance(it, index); return static_cast<float>(*it);
+              };
+
+              // Discover keeps the musical grammar of the selected family: recognisable identity,
+              // stochastic variation. GENDYN Core / unknown state remains the wide laboratory mode.
+              switch (family)
+              {
+                  case 1: // 1970s-style synthetic piano attempt: struck, pitched, bright stochastic transient.
+                      setParameterValue("ampWalk",range(0.025f,0.085f)); setParameterValue("timeWalk",range(0.012f,0.045f));
+                      setParameterValue("ampMirror",range(0.60f,0.82f)); setParameterValue("timeMirror",range(0.12f,0.30f));
+                      setParameterValue("ampDist",dist({2,4})); setParameterValue("timeDist",dist({1,2}));
+                      setParameterValue("ampStep",range(0.85f,1.45f)); setParameterValue("timeStep",range(0.45f,0.82f));
+                      setParameterValue("breakpoints",intRange(8,12)); setParameterValue("pitchStability",range(0.97f,1.0f));
+                      setParameterValue("curve",range(0.22f,0.48f)); setParameterValue("chaos",range(0.02f,0.14f));
+                      setParameterValue("attack",range(0.001f,0.012f)); setParameterValue("decay",range(0.55f,1.35f));
+                      setParameterValue("sustain",range(0.04f,0.22f)); setParameterValue("release",range(0.28f,0.95f)); break;
+                  case 2: // pads: slow, broad, smoothly evolving probability fields.
+                      setParameterValue("ampWalk",range(0.09f,0.24f)); setParameterValue("timeWalk",range(0.06f,0.17f));
+                      setParameterValue("ampMirror",range(0.78f,1.0f)); setParameterValue("timeMirror",range(0.42f,0.78f));
+                      setParameterValue("ampDist",dist({1,2,3})); setParameterValue("timeDist",dist({1,2,3}));
+                      setParameterValue("ampStep",range(0.38f,0.82f)); setParameterValue("timeStep",range(0.42f,0.92f));
+                      setParameterValue("breakpoints",intRange(10,12)); setParameterValue("pitchStability",range(0.90f,1.0f));
+                      setParameterValue("curve",range(0.58f,1.0f)); setParameterValue("chaos",range(0.05f,0.24f));
+                      setParameterValue("attack",range(0.55f,2.4f)); setParameterValue("decay",range(0.9f,2.8f));
+                      setParameterValue("sustain",range(0.68f,0.96f)); setParameterValue("release",range(2.0f,6.5f)); break;
+                  case 3: // strings: bowed stability with continuous small mutations.
+                      setParameterValue("ampWalk",range(0.055f,0.15f)); setParameterValue("timeWalk",range(0.035f,0.11f));
+                      setParameterValue("ampMirror",range(0.72f,0.94f)); setParameterValue("timeMirror",range(0.30f,0.62f));
+                      setParameterValue("ampDist",dist({2,3})); setParameterValue("timeDist",dist({1,2}));
+                      setParameterValue("ampStep",range(0.48f,0.90f)); setParameterValue("timeStep",range(0.45f,0.82f));
+                      setParameterValue("breakpoints",intRange(10,12)); setParameterValue("pitchStability",range(0.95f,1.0f));
+                      setParameterValue("curve",range(0.42f,0.72f)); setParameterValue("chaos",range(0.04f,0.18f));
+                      setParameterValue("attack",range(0.12f,0.75f)); setParameterValue("decay",range(0.55f,1.5f));
+                      setParameterValue("sustain",range(0.68f,0.92f)); setParameterValue("release",range(0.9f,3.2f)); break;
+                  case 4: // bass: compact, stable and low-mutation.
+                      setParameterValue("ampWalk",range(0.018f,0.075f)); setParameterValue("timeWalk",range(0.008f,0.04f));
+                      setParameterValue("ampMirror",range(0.52f,0.76f)); setParameterValue("timeMirror",range(0.09f,0.25f));
+                      setParameterValue("ampDist",dist({1,2,3})); setParameterValue("timeDist",dist({1,2}));
+                      setParameterValue("ampStep",range(0.28f,0.62f)); setParameterValue("timeStep",range(0.24f,0.55f));
+                      setParameterValue("breakpoints",intRange(6,9)); setParameterValue("pitchStability",range(0.98f,1.0f));
+                      setParameterValue("curve",range(0.08f,0.28f)); setParameterValue("chaos",range(0.0f,0.10f));
+                      setParameterValue("attack",range(0.002f,0.025f)); setParameterValue("decay",range(0.12f,0.45f));
+                      setParameterValue("sustain",range(0.48f,0.82f)); setParameterValue("release",range(0.08f,0.5f)); break;
+                  case 5: // leads: pitch-centred but more aggressive than bass.
+                      setParameterValue("ampWalk",range(0.035f,0.14f)); setParameterValue("timeWalk",range(0.018f,0.075f));
+                      setParameterValue("ampMirror",range(0.62f,0.88f)); setParameterValue("timeMirror",range(0.18f,0.42f));
+                      setParameterValue("ampDist",dist({2,3,4})); setParameterValue("timeDist",dist({1,2,3}));
+                      setParameterValue("ampStep",range(0.55f,1.05f)); setParameterValue("timeStep",range(0.42f,0.82f));
+                      setParameterValue("breakpoints",intRange(7,10)); setParameterValue("pitchStability",range(0.94f,1.0f));
+                      setParameterValue("curve",range(0.12f,0.42f)); setParameterValue("chaos",range(0.04f,0.22f));
+                      setParameterValue("attack",range(0.002f,0.08f)); setParameterValue("decay",range(0.16f,0.65f));
+                      setParameterValue("sustain",range(0.58f,0.88f)); setParameterValue("release",range(0.12f,0.75f)); break;
+                  case 6: // bells: sparse points, hard transients and heavy-tailed mutations.
+                      setParameterValue("ampWalk",range(0.035f,0.11f)); setParameterValue("timeWalk",range(0.008f,0.045f));
+                      setParameterValue("ampMirror",range(0.72f,0.96f)); setParameterValue("timeMirror",range(0.12f,0.34f));
+                      setParameterValue("ampDist",dist({4,5})); setParameterValue("timeDist",dist({3,4}));
+                      setParameterValue("ampStep",range(0.90f,1.55f)); setParameterValue("timeStep",range(0.58f,1.05f));
+                      setParameterValue("breakpoints",intRange(4,7)); setParameterValue("pitchStability",range(0.88f,0.98f));
+                      setParameterValue("curve",range(0.05f,0.30f)); setParameterValue("chaos",range(0.10f,0.34f));
+                      setParameterValue("attack",range(0.001f,0.008f)); setParameterValue("decay",range(0.8f,2.2f));
+                      setParameterValue("sustain",range(0.0f,0.06f)); setParameterValue("release",range(0.65f,2.6f)); break;
+                  case 7: // plucks: short, defined, variable transient geometry.
+                      setParameterValue("ampWalk",range(0.055f,0.16f)); setParameterValue("timeWalk",range(0.018f,0.07f));
+                      setParameterValue("ampMirror",range(0.62f,0.86f)); setParameterValue("timeMirror",range(0.15f,0.36f));
+                      setParameterValue("ampDist",dist({1,2,4})); setParameterValue("timeDist",dist({1,2}));
+                      setParameterValue("ampStep",range(0.85f,1.55f)); setParameterValue("timeStep",range(0.58f,1.05f));
+                      setParameterValue("breakpoints",intRange(6,9)); setParameterValue("pitchStability",range(0.97f,1.0f));
+                      setParameterValue("curve",range(0.22f,0.58f)); setParameterValue("chaos",range(0.06f,0.24f));
+                      setParameterValue("attack",range(0.001f,0.006f)); setParameterValue("decay",range(0.16f,0.48f));
+                      setParameterValue("sustain",range(0.0f,0.08f)); setParameterValue("release",range(0.08f,0.42f)); break;
+                  case 8: // FX: intentionally wide and unstable.
+                      setParameterValue("ampWalk",range(0.28f,0.82f)); setParameterValue("timeWalk",range(0.24f,0.78f));
+                      setParameterValue("ampMirror",range(0.72f,1.0f)); setParameterValue("timeMirror",range(0.55f,1.0f));
+                      setParameterValue("ampDist",dist({3,4,5})); setParameterValue("timeDist",dist({3,4,5}));
+                      setParameterValue("ampStep",range(1.05f,2.0f)); setParameterValue("timeStep",range(1.0f,2.0f));
+                      setParameterValue("breakpoints",intRange(7,12)); setParameterValue("pitchStability",range(0.25f,0.78f));
+                      setParameterValue("curve",range(0.0f,0.48f)); setParameterValue("chaos",range(0.48f,0.95f));
+                      setParameterValue("attack",range(0.001f,0.25f)); setParameterValue("decay",range(0.25f,1.5f));
+                      setParameterValue("sustain",range(0.25f,0.82f)); setParameterValue("release",range(0.4f,4.5f)); break;
+                  case 0:
+                  default:
+                      setParameterValue("ampWalk",range(0.01f,0.61f)); setParameterValue("timeWalk",range(0.005f,0.485f));
+                      setParameterValue("ampMirror",range(0.25f,1.0f)); setParameterValue("timeMirror",range(0.08f,0.90f));
+                      setParameterValue("ampDist",intRange(0,5)); setParameterValue("timeDist",intRange(0,5));
+                      setParameterValue("ampStep",range(0.35f,1.80f)); setParameterValue("timeStep",range(0.35f,1.80f));
+                      setParameterValue("breakpoints",intRange(4,12)); setParameterValue("pitchStability",range(0.55f,1.0f));
+                      setParameterValue("curve",range(0.0f,1.0f)); setParameterValue("chaos",range(0.0f,0.65f)); break;
+              }
+              setParameterValue("walkOrder",discoveryRandom.nextFloat() < 0.22f ? 1.0f : 2.0f);
+              setParameterValue("seed",static_cast<float>(1+discoveryRandom.nextInt(999998)));
+              stopAllVoices(false);
+          }
+          '''
+          s = replace_once(s, old_discover, new_discover, 'family-aware Discover')
+          p.write_text(s)
+
+          # ---- Editor: drum envelope honesty and make the planet respond to every DSS architecture control.
+          p = Path('Source/PluginEditor.cpp')
+          s = p.read_text()
+          s = replace_once(s,
+              'drawPanel(g,{1138,352,248,278},"VOICE / PROBABILITY STATE");drawPanel(g,{14,640,500,220},"AMPLITUDE ENVELOPE");drawPanel(g,{524,640,610,220},"PRESETS / FIELD MEMORY");',
+              'drawPanel(g,{1138,352,248,278},"VOICE / PROBABILITY STATE");drawPanel(g,{14,640,500,220},audioProcessor.isDrumMode()?"PERCUSSION ENVELOPE / INTERNAL":"AMPLITUDE ENVELOPE");drawPanel(g,{524,640,610,220},"PRESETS / FIELD MEMORY");',
+              'drum envelope panel title')
+
+          old_timer = 'void VeloriaAudioProcessorEditor::timerCallback(){visualState=audioProcessor.getVisualState();rotationPhase+=0.0022f+visualState.energy*0.0095f;if(rotationPhase>juce::MathConstants<float>::twoPi)rotationPhase-=juce::MathConstants<float>::twoPi;voiceStatus.setText("VOICE ENGINE   "+juce::String(visualState.activeVoices)+" / 8 ACTIVE",juce::dontSendNotification);fieldStatus.setText(juce::String(visualState.activeVoices)+" VOICES  //  "+juce::String((int)(visualState.energy*100.0f))+"% ENERGY",juce::dontSendNotification);refreshOrderButton();repaint();}'
+          new_timer = 'void VeloriaAudioProcessorEditor::timerCallback(){visualState=audioProcessor.getVisualState();rotationPhase+=0.0022f+visualState.energy*0.0095f;if(rotationPhase>juce::MathConstants<float>::twoPi)rotationPhase-=juce::MathConstants<float>::twoPi;voiceStatus.setText("VOICE ENGINE   "+juce::String(visualState.activeVoices)+" / 8 ACTIVE",juce::dontSendNotification);fieldStatus.setText(juce::String(visualState.activeVoices)+" VOICES  //  "+juce::String((int)(visualState.energy*100.0f))+"% ENERGY",juce::dontSendNotification);const auto drums=audioProcessor.isDrumMode();for(auto* e:{&attack,&decay,&sustain,&release}){e->setEnabled(!drums);e->setAlpha(drums?0.30f:1.0f);}if(drums)presetStatus.setText("DRUM MODE: ADSR REPLACED BY STOCHASTIC ONE-SHOT ENVELOPES",juce::dontSendNotification);refreshOrderButton();repaint();}'
+          s = replace_once(s, old_timer, new_timer, 'drum ADSR UI honesty')
+
+          old_globe_head = '''    const auto aw=parameterValue(audioProcessor.parameters,"ampWalk"),tw=parameterValue(audioProcessor.parameters,"timeWalk");
+              const auto ampBarrier=parameterValue(audioProcessor.parameters,"ampMirror"),timeBarrier=parameterValue(audioProcessor.parameters,"timeMirror");
+              const auto chaosValue=parameterValue(audioProcessor.parameters,"chaos"),ampStepValue=parameterValue(audioProcessor.parameters,"ampStep"),timeStepValue=parameterValue(audioProcessor.parameters,"timeStep");
+              juce::ignoreUnused(ampBarrier,timeBarrier,ampStepValue,timeStepValue);
+              const auto energy=juce::jlimit(0.0f,1.0f,visualState.energy),activity=juce::jlimit(0.0f,1.0f,0.42f+aw*0.14f+tw*0.13f+energy*0.15f+chaosValue*0.16f);
+          '''
+          new_globe_head = '''    const auto aw=parameterValue(audioProcessor.parameters,"ampWalk"),tw=parameterValue(audioProcessor.parameters,"timeWalk");
+              const auto ampBarrier=parameterValue(audioProcessor.parameters,"ampMirror"),timeBarrier=parameterValue(audioProcessor.parameters,"timeMirror");
+              const auto chaosValue=parameterValue(audioProcessor.parameters,"chaos"),ampStepValue=parameterValue(audioProcessor.parameters,"ampStep"),timeStepValue=parameterValue(audioProcessor.parameters,"timeStep");
+              const auto ampDistValue=parameterValue(audioProcessor.parameters,"ampDist"),timeDistValue=parameterValue(audioProcessor.parameters,"timeDist");
+              const auto pitchLockValue=parameterValue(audioProcessor.parameters,"pitchStability"),curveValue=parameterValue(audioProcessor.parameters,"curve");
+              const auto activePoints=juce::jlimit(4,12,(int)parameterValue(audioProcessor.parameters,"breakpoints"));
+              const auto orderValue=parameterValue(audioProcessor.parameters,"walkOrder");
+              const auto barrierSpan=juce::jlimit(0.0f,1.0f,(ampBarrier+timeBarrier)*0.5f);
+              const auto stepEnergy=juce::jlimit(0.0f,1.0f,((ampStepValue+timeStepValue)*0.5f-0.10f)/1.90f);
+              const auto distributionEnergy=juce::jlimit(0.0f,1.0f,(ampDistValue+timeDistValue)/10.0f);
+              const auto energy=juce::jlimit(0.0f,1.0f,visualState.energy),activity=juce::jlimit(0.0f,1.0f,0.25f+aw*0.12f+tw*0.11f+energy*0.14f+chaosValue*0.13f+stepEnergy*0.10f+barrierSpan*0.08f+distributionEnergy*0.05f);
+          '''
+          s = replace_once(s, old_globe_head, new_globe_head, 'globe parameter head')
+
+          s = replace_once(s,
+              'for(std::size_t i=0;i<pts.size();++i){const auto a=rotationPhase-juce::MathConstants<float>::halfPi+juce::MathConstants<float>::twoPi*(cumulative/juce::jmax(.001f,total));cumulative+=juce::jmax(.001f,visualState.durations[i]);const auto radial=r*(.54f+visualState.amplitudes[i]*.24f);const auto depth=.75f+.20f*std::sin(a*1.9f+rotationPhase*.61f+i*.31f);pts[i]={c.x+std::cos(a)*radial,c.y+std::sin(a)*radial*depth};}',
+              'for(std::size_t i=0;i<pts.size();++i){const auto a=rotationPhase-juce::MathConstants<float>::halfPi+juce::MathConstants<float>::twoPi*(cumulative/juce::jmax(.001f,total));cumulative+=juce::jmax(.001f,visualState.durations[i]);const auto isActive=(int)i<activePoints;const auto radial=isActive?r*((.38f+.20f*barrierSpan)+visualState.amplitudes[i]*(.14f+.13f*ampBarrier)):r*.055f;const auto depth=.62f+.27f*timeBarrier+.10f*std::sin(a*(1.55f+.55f*orderValue)+rotationPhase*(.42f+.26f*(1.0f-pitchLockValue))+i*.31f);pts[i]={c.x+std::cos(a)*radial,c.y+std::sin(a)*radial*depth};}',
+              'active breakpoint geometry')
+
+          s = replace_once(s,
+              'const auto shell=.24f+.70f*std::sqrt(hash01(h*47+3));',
+              'const auto shell=.18f+(.52f+.25f*barrierSpan)*std::sqrt(hash01(h*47+3));',
+              'barrier-driven hub shells')
+          s = replace_once(s,
+              'const auto radial=std::pow(hash01(i*37+11),.38f);const auto angle=fi*2.39996323f+rotationPhase*(.07f+(i%31)*.0035f)+std::sin(fi*.031f)*chaosValue*.28f;',
+              'const auto radial=std::pow(hash01(i*37+11),.30f+(1.0f-barrierSpan)*.30f);const auto angle=fi*2.39996323f+rotationPhase*((orderValue<1.5f?-.055f:.07f)+(i%31)*.0035f)+std::sin(fi*.031f)*(chaosValue*.28f+distributionEnergy*.12f);',
+              'distribution/order/barrier particle field')
+          s = replace_once(s,
+              'const bool hot=i%181==0;const auto size=hot?2.4f:.30f+near*.92f;',
+              'const auto hotModulo=juce::jmax(71,181-(int)(stepEnergy*78.0f));const bool hot=i%hotModulo==0;const auto size=hot?2.4f+stepEnergy*.8f:.30f+near*.92f;',
+              'step-driven particle events')
+          s = replace_once(s,
+              'const auto bend=r*(.025f+.16f*hash01(strand*19+5))*(.75f+chaosValue*.6f);',
+              'const auto bend=r*(.018f+(.08f+.10f*stepEnergy)*hash01(strand*19+5))*(.68f+chaosValue*.55f+distributionEnergy*.22f)*(1.10f-curveValue*.30f);',
+              'step/distribution/curve filament bends')
+          s = replace_once(s,
+              'for(std::size_t i=0;i<pts.size();++i){const auto amp=std::abs(visualState.amplitudes[i]);const auto nr=1.5f+amp*1.8f+energy*.3f;',
+              'for(std::size_t i=0;i<pts.size();++i){if((int)i>=activePoints)continue;const auto amp=std::abs(visualState.amplitudes[i]);const auto nr=1.5f+amp*1.8f+energy*.3f;',
+              'hide inactive breakpoint nodes')
+          p.write_text(s)
+
+          # ---- README: make the documented architecture match the actual instrument.
+          p = Path('README.md')
+          p.write_text('''# Latham Audio Veloria
+
+**Fifty years of synthesis that never happened.**
+
+Veloria is a playable polyphonic Dynamic Stochastic Synthesis instrument: an alternate history of what stochastic synthesis might have become if it had received the same decades of instrument design, performance refinement and musical culture as analogue, FM and wavetable synthesis.
+
+The aim is not to recreate GENDYN as an academic exhibit. Veloria turns breakpoint mutation, reflecting barriers, random-walk order and probability distributions into a coherent instrument whose patches remain recognisable while never becoming mechanically identical.
+
+## Locked architecture
+
+The waveform itself is the stochastic system. There is no hidden subtractive oscillator/filter architecture underneath it.
+
+### Four performance field controls
+
+- **AMP WALK** — how readily breakpoint amplitudes move.
+- **TIME WALK** — how readily breakpoint durations move.
+- **AMP BARRIER** — the amplitude space available to the reflecting random walk.
+- **TIME BARRIER** — the duration space available to the reflecting random walk.
+
+### Eight shaping controls + one order switch
+
+- **AMP DIST / TIME DIST** — Adaptive, Uniform, Gaussian, Logistic, Cauchy or Arcsine mutation statistics.
+- **AMP STEP / TIME STEP** — mutation reach.
+- **CHAOS** — a true DSS performance macro that expands stochastic reach and relaxes pitch anchoring; it does not add an unrelated noise/distortion engine.
+- **POINTS** — 4–12 active waveform breakpoints.
+- **PITCH LOCK** — how strongly the duration field is normalised back to keyboard pitch.
+- **CURVE** — interpolation between evolving breakpoints.
+- **ORDER 1 / 2** — first-order position walks versus second-order step/momentum walks.
+
+ADSR, velocity, mono/polyphony and level are performance architecture around the stochastic generator. Polyphonic and channel aftertouch push held notes deeper into the stochastic field by increasing walk/step energy and slightly relaxing pitch lock.
+
+## Instrument families
+
+Factory families are **GENDYN Core, Piano, Pad, Strings, Bass, Lead, Bell, Pluck, FX and Drums**. These are not claims of acoustic modelling. Piano, strings, bells and the others are deliberately imagined in the spirit of a 1970s synthesizer attempting those instrument identities through its own synthesis language.
+
+**DISCOVER is family-aware.** Piano discovery stays struck, pitched and piano-like; Pad discovery remains slow and evolving; Bass stays compact and stable; Bell keeps sparse, heavy-tailed transients; FX is allowed to become unstable. Drum discovery remains fenced inside percussion grammar.
+
+The Drum family uses a dedicated stochastic one-shot architecture rather than the tonal ADSR: kick pitch/barrier contraction, a two-engine snare (body + wire), closed/open hats, crash and tom behaviour. The UI therefore marks the ADSR section as internal/inactive while Drum mode is selected.
+
+## Living Planet
+
+The central globe is not a decorative screensaver. Its twelve possible nodes are the oscillator breakpoint state; inactive nodes disappear when POINTS is reduced. Field radius responds to barriers, particle events to step energy, trajectory character to distributions/order/curve, motion to walk/chaos, and live intensity to actual voice energy. Five larger macro anchors organise the visual world without pretending to be extra DSP breakpoints.
+
+## Field identity and recall
+
+Seeded randomness makes patches recallable. **NEW FIELD** changes stochastic identity without changing the patch architecture. User presets retain parameters, drum state and MIDI mappings.
+
+## WHAT IF?
+
+Veloria includes an alternate-history feature tracing an imagined commercial lineage from the 1970s Xenakis System 55 through the Gendy-D Lead, Stochastic-303 and Stochastic-909 to **Veloria 2026 — the instrument from the synthesis history that never happened.** This story explains the instrument; it is not a second or fake synthesis engine.
+
+## Product principles
+
+- **Musical before mathematical** — probability systems are translated into playable controls.
+- **Stable identity, living performance** — presets remain recognisable without repeating mechanically.
+- **Deterministic when required** — seeded randomness makes patches and sessions recallable.
+- **Every visible control is meaningful** — no dummy DSP controls.
+- **One coherent synthesis language** — stochastic waveform generation remains the source of the sound.
+- **No runtime AI dependency** — conventional C++/JUCE DSP.
+
+## Formats and development
+
+Veloria uses C++20, JUCE and CMake. VST3 is the active test target; Audio Unit and Standalone remain planned targets, with AAX possible later.
+
+```bash
+git clone https://github.com/simonlatham155-tech/veloria.git
+cd veloria
+cmake -S . -B build
+cmake --build build --config Release
+```
+''')
+          PY
+
+      - name: Build VST3 before committing
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --target Veloria_VST3 -j2
+
+      - name: Commit successful consistency pass
+        run: |
+          git config user.name "Veloria Architecture Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add Source/PluginProcessor.h Source/PluginProcessor.cpp Source/PluginEditor.cpp README.md
+          if git diff --cached --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git commit -m "Align Veloria architecture and interaction details"
+          git push origin HEAD:agent/vst3-test-build
