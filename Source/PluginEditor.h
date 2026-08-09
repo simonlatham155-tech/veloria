@@ -38,6 +38,8 @@ private:
     void drawStochasticGlobe(juce::Graphics&, juce::Rectangle<float> bounds);
     void drawEvolutionGraph(juce::Graphics&, juce::Rectangle<float> bounds);
     void drawPanel(juce::Graphics&, juce::Rectangle<float> bounds, const juce::String& title);
+    void drawWhatIfOverlay(juce::Graphics&);
+    void setWhatIfMode(bool shouldOpen);
     void configureKnob(MidiLearnSlider&, const juce::String& parameterId, const juce::String& displayName);
     void configureFieldSlider(MidiLearnSlider&, const juce::String& parameterId, const juce::String& displayName);
     void refreshPresetBox(const juce::String& selectUserPreset = {});
@@ -59,6 +61,7 @@ private:
     juce::TextButton orderButton { "ORDER 2" };
     juce::TextButton discoverButton { "DISCOVER" };
     juce::TextButton newFieldButton { "NEW FIELD" };
+    juce::TextButton whatIfButton { "WHAT IF?" };
     juce::TextButton savePresetButton { "SAVE" };
     juce::TextButton renamePresetButton { "RENAME" };
     juce::TextButton deletePresetButton { "DELETE" };
@@ -78,6 +81,7 @@ private:
     std::unique_ptr<ButtonAttachment> monoAttachment;
 
     float rotationPhase { 0.0f };
+    bool whatIfOpen { false };
     static constexpr int firstUserPresetId = 1001;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessorEditor)
