@@ -34,6 +34,54 @@ private:
         void mouseDown(const juce::MouseEvent&) override;
     };
 
+    class EngineModeButton final : public juce::TextButton,
+                                   private juce::Timer
+    {
+    public:
+        EngineModeButton(VeloriaAudioProcessorEditor& editorToUse,
+                         VeloriaAudioProcessor& processorToUse)
+            : juce::TextButton("ENGINE: VELORIA"),
+              editor(editorToUse), processor(processorToUse)
+        {
+            setTooltip("Switch between Veloria's modern DSS model and the Andrew R. Brown / Greg Jenkins IDSS-inspired operating model.");
+            onClick = [this]
+            {
+                processor.setBrownIdssMode(! processor.isBrownIdssMode());
+                editor.presetStatus.setText(processor.isBrownIdssMode()
+                    ? "BROWN IDSS: INTERACTIVE DSS OPERATING MODEL"
+                    : "VELORIA: MODERN DSS OPERATING MODEL",
+                    juce::dontSendNotification);
+                updateAppearance();
+            };
+            startTimerHz(12);
+        }
+
+    private:
+        void timerCallback() override
+        {
+            if (getParentComponent() == nullptr)
+                editor.addAndMakeVisible(*this);
+
+            setBounds(103, 600, 215, 20);
+            setVisible(! editor.whatIfOpen);
+            updateAppearance();
+        }
+
+        void updateAppearance()
+        {
+            const auto brown = processor.isBrownIdssMode();
+            setButtonText(brown ? "ENGINE: BROWN IDSS" : "ENGINE: VELORIA");
+            const auto active = brown ? juce::Colour::fromRGB(255, 184, 86)
+                                      : juce::Colour::fromRGB(176, 77, 255);
+            setColour(juce::TextButton::buttonColourId, active.withAlpha(brown ? 0.24f : 0.16f));
+            setColour(juce::TextButton::textColourOffId,
+                      (brown ? juce::Colour::fromRGB(255, 184, 86) : juce::Colours::white).withAlpha(0.92f));
+        }
+
+        VeloriaAudioProcessorEditor& editor;
+        VeloriaAudioProcessor& processor;
+    };
+
     void timerCallback() override;
     void drawStochasticGlobe(juce::Graphics&, juce::Rectangle<float> bounds);
     void drawEvolutionGraph(juce::Graphics&, juce::Rectangle<float> bounds);
@@ -45,7 +93,6 @@ private:
     void refreshPresetBox(const juce::String& selectUserPreset = {});
     bool selectedPresetIsUser() const noexcept;
     void refreshOrderButton();
-    void refreshEngineButton();
 
     VeloriaAudioProcessor& audioProcessor;
     VeloriaAudioProcessor::VisualState visualState;
@@ -60,7 +107,6 @@ private:
     juce::ComboBox presetBox;
     juce::ToggleButton monoButton { "MONO" };
     juce::TextButton orderButton { "ORDER 2" };
-    juce::TextButton engineButton { "ENGINE: VELORIA" };
     juce::TextButton discoverButton { "DISCOVER" };
     juce::TextButton newFieldButton { "NEW FIELD" };
     juce::TextButton whatIfButton { "WHAT IF?" };
@@ -84,6 +130,7 @@ private:
 
     float rotationPhase { 0.0f };
     bool whatIfOpen { false };
+    EngineModeButton engineButton { *this, audioProcessor };
     static constexpr int firstUserPresetId = 1001;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessorEditor)
