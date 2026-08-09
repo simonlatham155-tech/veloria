@@ -45,6 +45,7 @@ private:
     void refreshPresetBox(const juce::String& selectUserPreset = {});
     bool selectedPresetIsUser() const noexcept;
     void refreshOrderButton();
+    void refreshEngineButton();
 
     VeloriaAudioProcessor& audioProcessor;
     VeloriaAudioProcessor::VisualState visualState;
@@ -59,6 +60,7 @@ private:
     juce::ComboBox presetBox;
     juce::ToggleButton monoButton { "MONO" };
     juce::TextButton orderButton { "ORDER 2" };
+    juce::TextButton engineButton { "ENGINE: VELORIA" };
     juce::TextButton discoverButton { "DISCOVER" };
     juce::TextButton newFieldButton { "NEW FIELD" };
     juce::TextButton whatIfButton { "WHAT IF?" };
