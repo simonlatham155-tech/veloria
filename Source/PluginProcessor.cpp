@@ -93,7 +93,7 @@ void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
         voice.midiNote = -1;
         voice.pressure = 0.0f;
     }
-    outputGain.prepare({ currentSampleRate, static_cast<juce::uint32_t>(samplesPerBlock), 2 });
+    outputGain.prepare({ currentSampleRate, static_cast<juce::uint32>(samplesPerBlock), 2 });
     updateVoiceParameters();
     publishVisualState(0.0f);
 }
