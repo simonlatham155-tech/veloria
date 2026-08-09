@@ -88,6 +88,7 @@ void VeloriaAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
         voice.oscillator.prepare(currentSampleRate);
         voice.envelope.setSampleRate(currentSampleRate);
         voice.active = false;
+        voice.held = false;
         voice.percussion = false;
         voice.drumKind = DrumKind::none;
         voice.midiNote = -1;
@@ -133,36 +134,12 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                     voice.pressure = pressure;
         }
 
-        bool handledNoteMessage = false;
-        const auto* raw = message.getRawData();
-        const auto rawSize = message.getRawDataSize();
-        if (raw != nullptr && rawSize >= 3)
-        {
-            const auto status = raw[0] & 0xF0;
-            const auto note = raw[1] & 0x7F;
-            const auto velocity = raw[2] & 0x7F;
-
-            if (status == 0x90 && velocity > 0)
-            {
-                startNote(note, static_cast<float>(velocity) / 127.0f);
-                handledNoteMessage = true;
-            }
-            else if (status == 0x80 || (status == 0x90 && velocity == 0))
-            {
-                stopNote(note);
-                handledNoteMessage = true;
-            }
-        }
-
-        if (! handledNoteMessage)
-        {
-            if (message.isNoteOn(false))
-                startNote(message.getNoteNumber(), message.getFloatVelocity());
-            else if (message.isNoteOff(true))
-                stopNote(message.getNoteNumber());
-            else if (message.isAllNotesOff() || message.isAllSoundOff())
-                stopAllVoices(false);
-        }
+        if (message.isNoteOn(false))
+            startNote(message.getNoteNumber(), message.getFloatVelocity());
+        else if (message.isNoteOff(true))
+            stopNote(message.getNoteNumber());
+        else if (message.isAllNotesOff() || message.isAllSoundOff())
+            stopAllVoices(false);
     }
 
     // Reapply once after MIDI so pressure changes affect the same block.
@@ -214,6 +191,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                 if (voice.percussionSample >= length)
                 {
                     voice.active = false;
+                    voice.held = false;
                     voice.percussion = false;
                     voice.drumKind = DrumKind::none;
                     voice.midiNote = -1;
@@ -227,6 +205,7 @@ void VeloriaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
             if (! voice.envelope.isActive())
             {
                 voice.active = false;
+                voice.held = false;
                 voice.midiNote = -1;
                 voice.pressure = 0.0f;
             }
@@ -260,6 +239,7 @@ void VeloriaAudioProcessor::startNote(int midiNote, float velocity)
 
     auto& voice = mono ? voices.front() : findVoiceToStart();
     voice.active = true;
+    voice.held = true;
     voice.percussion = false;
     voice.drumKind = DrumKind::none;
     voice.midiNote = midiNote;
@@ -313,6 +293,7 @@ void VeloriaAudioProcessor::startDrumNote(int midiNote, float velocity)
 void VeloriaAudioProcessor::configureDrumVoice(Voice& voice, DrumKind kind, int midiNote, float velocity, int layerIndex)
 {
     voice.active = true;
+    voice.held = false;
     voice.percussion = true;
     voice.drumKind = kind;
     voice.midiNote = midiNote;
@@ -395,15 +376,22 @@ void VeloriaAudioProcessor::stopNote(int midiNote)
 {
     if (drumMode)
         return;
+
     for (auto& voice : voices)
-        if (voice.active && voice.midiNote == midiNote)
+    {
+        if (voice.active && ! voice.percussion && voice.midiNote == midiNote)
+        {
+            voice.held = false;
             voice.envelope.noteOff();
+        }
+    }
 }
 
 void VeloriaAudioProcessor::stopAllVoices(bool allowTailOff)
 {
     for (auto& voice : voices)
     {
+        voice.held = false;
         if (allowTailOff && ! voice.percussion)
             voice.envelope.noteOff();
         else
@@ -430,6 +418,7 @@ VeloriaAudioProcessor::Voice& VeloriaAudioProcessor::findVoiceToStart()
             oldest = &voice;
     oldest->envelope.reset();
     oldest->active = false;
+    oldest->held = false;
     oldest->percussion = false;
     oldest->drumKind = DrumKind::none;
     oldest->pressure = 0.0f;
@@ -495,16 +484,24 @@ void VeloriaAudioProcessor::updateVoiceParameters()
 void VeloriaAudioProcessor::publishVisualState(float energy) noexcept
 {
     const Voice* visualVoice = &voices.front();
-    int activeCount = 0;
+    int displayVoiceCount = 0;
+
     for (const auto& voice : voices)
     {
-        if (voice.active)
+        if (drumMode)
         {
-            ++activeCount;
-            if (visualVoice == &voices.front() && ! voices.front().active)
-                visualVoice = &voice;
+            if (voice.active)
+                ++displayVoiceCount;
         }
+        else if (voice.active && voice.held)
+        {
+            ++displayVoiceCount;
+        }
+
+        if (voice.active && visualVoice == &voices.front() && ! voices.front().active)
+            visualVoice = &voice;
     }
+
     std::array<float, visualBreakpointCount> amplitudes {};
     std::array<float, visualBreakpointCount> durations {};
     visualVoice->oscillator.copyState(amplitudes, durations);
@@ -513,7 +510,7 @@ void VeloriaAudioProcessor::publishVisualState(float energy) noexcept
         visualAmplitudes[i].store(amplitudes[i], std::memory_order_relaxed);
         visualDurations[i].store(durations[i], std::memory_order_relaxed);
     }
-    visualActiveVoices.store(activeCount, std::memory_order_relaxed);
+    visualActiveVoices.store(displayVoiceCount, std::memory_order_relaxed);
     visualEnergy.store(energy, std::memory_order_relaxed);
 }
 
