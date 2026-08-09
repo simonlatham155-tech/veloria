@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Veloria VERSION 0.1.0 LANGUAGES C CXX)
+project(Veloria VERSION 0.1.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,7 +10,7 @@ include(FetchContent)
 FetchContent_Declare(
     JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG 8.0.4
+    GIT_TAG 8.0.14
 )
 FetchContent_MakeAvailable(JUCE)
 
@@ -45,6 +45,7 @@ target_compile_definitions(Veloria
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
+        VELORIA_DIAGNOSTIC_BUILD=1
 )
 
 target_link_libraries(Veloria
