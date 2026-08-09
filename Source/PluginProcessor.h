@@ -96,10 +96,52 @@ private:
         tom
     };
 
+    // JUCE ADSR recalculates its stage rates whenever setParameters() is called.
+    // The processor updates synthesis parameters every audio block, so forwarding
+    // an unchanged ADSR parameter set every block can continually recalculate the
+    // release from its current level and make a note appear to decay forever.
+    // This wrapper forwards only genuine envelope changes, while preserving live
+    // ADSR editing and the normal JUCE ADSR API used by the voice engine.
+    class StableADSR
+    {
+    public:
+        void setSampleRate(double newSampleRate)
+        {
+            adsr.setSampleRate(newSampleRate);
+        }
+
+        void setParameters(const juce::ADSR::Parameters& newParameters)
+        {
+            const bool changed = ! hasParameters
+                || newParameters.attack  != parameters.attack
+                || newParameters.decay   != parameters.decay
+                || newParameters.sustain != parameters.sustain
+                || newParameters.release != parameters.release;
+
+            if (! changed)
+                return;
+
+            parameters = newParameters;
+            hasParameters = true;
+            adsr.setParameters(parameters);
+        }
+
+        void reset() noexcept { adsr.reset(); }
+        void noteOn() noexcept { adsr.noteOn(); }
+        void noteOff() noexcept { adsr.noteOff(); }
+        float getNextSample() noexcept { return adsr.getNextSample(); }
+        bool isActive() const noexcept { return adsr.isActive(); }
+
+    private:
+        juce::ADSR adsr;
+        juce::ADSR::Parameters parameters {};
+        bool hasParameters { false };
+    };
+
     struct Voice
     {
         veloria::dsp::StochasticOscillator oscillator;
-        juce::ADSR envelope;
+        StableADSR envelope;
         int midiNote { -1 };
         bool active { false };
         bool percussion { false };
