@@ -1,0 +1,111 @@
+name: Club Beats and resize integration
+
+on:
+  push:
+    branches:
+      - agent/vst3-test-build
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/vst3-test-build
+          fetch-depth: 0
+
+      - name: Apply Club Beats and resize patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # --- Flagship stochastic club kit ---
+          p = Path('Source/PluginProcessor.cpp')
+          s = p.read_text()
+          s = s.replace(
+              '{ "Drums",       0.62f, 0.52f, 0.96f, 0.86f, 0.001f,0.20f, 0.00f, 0.05f,11939 }',
+              '{ "Veloria Club Beats", 0.58f, 0.46f, 0.94f, 0.82f, 0.001f,0.20f, 0.00f, 0.05f,90984 }')
+          s = s.replace(
+              'case 9: setParameterValue("ampDist",4); setParameterValue("timeDist",4); setParameterValue("ampStep",1.45f); setParameterValue("timeStep",1.35f); setParameterValue("breakpoints",7); setParameterValue("pitchStability",0.90f); setParameterValue("curve",0.12f); setParameterValue("chaos",0.52f); break;',
+              'case 9: setParameterValue("ampDist",4); setParameterValue("timeDist",3); setParameterValue("ampStep",1.60f); setParameterValue("timeStep",1.32f); setParameterValue("breakpoints",9); setParameterValue("pitchStability",0.92f); setParameterValue("curve",0.18f); setParameterValue("chaos",0.46f); break;')
+          # Tune the club kick/snare identity without changing the stochastic architecture.
+          s = s.replace(
+              'durationSeconds=0.52f; attackMs=0.45f; startAmpWalk=0.58f; endAmpWalk=0.008f; startTimeWalk=0.34f; endTimeWalk=0.004f;\n            ampMirror=0.80f; timeMirror=0.36f; startFrequency=126.0f; endFrequency=48.0f; contractionPower=3.8f; pitchPower=4.2f; decayPower=2.6f; level=1.45f;',
+              'durationSeconds=0.56f; attackMs=0.30f; startAmpWalk=0.62f; endAmpWalk=0.006f; startTimeWalk=0.36f; endTimeWalk=0.003f;\n            ampMirror=0.82f; timeMirror=0.34f; startFrequency=148.0f; endFrequency=49.0f; contractionPower=4.0f; pitchPower=4.5f; decayPower=2.55f; level=1.48f;')
+          s = s.replace(
+              'durationSeconds=0.42f; attackMs=0.45f; startAmpWalk=0.66f; endAmpWalk=0.018f; startTimeWalk=0.42f; endTimeWalk=0.010f;\n            ampMirror=0.90f; timeMirror=0.55f; startFrequency=285.0f; endFrequency=175.0f; contractionPower=3.0f; pitchPower=2.8f; decayPower=2.1f; level=0.95f;',
+              'durationSeconds=0.44f; attackMs=0.32f; startAmpWalk=0.69f; endAmpWalk=0.016f; startTimeWalk=0.45f; endTimeWalk=0.009f;\n            ampMirror=0.91f; timeMirror=0.53f; startFrequency=305.0f; endFrequency=182.0f; contractionPower=3.1f; pitchPower=2.9f; decayPower=2.15f; level=0.98f;')
+          p.write_text(s)
+
+          # --- Resizable editor, preserving the 1400x900 design geometry ---
+          p = Path('Source/PluginEditor.cpp')
+          s = p.read_text()
+          old = '    setSize(1400,900);'
+          new = '''    setResizable(true, true);\n    setResizeLimits(980, 630, 1960, 1260);\n    if (auto* constrainer = getConstrainer())\n        constrainer->setFixedAspectRatio(1400.0 / 900.0);\n    setSize(1400,900);'''
+          if old not in s:
+              raise SystemExit('constructor setSize marker not found')
+          s = s.replace(old, new, 1)
+
+          paint_marker = 'void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)\n{\n    g.fillAll(background);'
+          paint_repl = '''void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)\n{\n    const auto sx = static_cast<float>(getWidth()) / 1400.0f;\n    const auto sy = static_cast<float>(getHeight()) / 900.0f;\n    juce::Graphics::ScopedSaveState designScale(g);\n    g.addTransform(juce::AffineTransform::scale(sx, sy));\n    g.fillAll(background);'''
+          if paint_marker not in s:
+              raise SystemExit('paint marker not found')
+          s = s.replace(paint_marker, paint_repl, 1)
+
+          resized_repl = r'''void VeloriaAudioProcessorEditor::resized()
+{
+    const auto sx = static_cast<float>(getWidth()) / 1400.0f;
+    const auto sy = static_cast<float>(getHeight()) / 900.0f;
+    auto place = [sx, sy](juce::Component& c, int x, int y, int w, int h)
+    {
+        c.setBounds(juce::roundToInt((float)x * sx), juce::roundToInt((float)y * sy),
+                    juce::roundToInt((float)w * sx), juce::roundToInt((float)h * sy));
+    };
+
+    place(title,515,8,370,34); place(subtitle,535,40,330,11); place(whatIfButton,842,15,80,30);
+    place(presetBox,930,15,190,30); place(discoverButton,1128,15,78,30); place(newFieldButton,1213,15,84,30); place(monoButton,1305,15,68,30);
+    place(ampWalk,28,108,64,242); place(timeWalk,104,108,64,242); place(ampMirror,180,108,64,242); place(timeMirror,256,108,64,242);
+    place(ampDist,24,374,70,104); place(timeDist,100,374,70,104); place(ampStep,176,374,70,104); place(timeStep,252,374,70,104);
+    place(chaos,24,490,70,104); place(breakpoints,100,490,70,104); place(pitchStability,176,490,70,104); place(curve,252,490,70,104); place(orderButton,25,600,68,20);
+    place(attack,24,680,116,150); place(decay,142,680,116,150); place(sustain,260,680,116,150); place(release,378,680,116,150);
+    place(seed,548,700,86,92); place(fieldStatus,646,716,148,35); place(presetNameEditor,808,674,300,29);
+    place(savePresetButton,808,712,78,29); place(renamePresetButton,894,712,82,29); place(deletePresetButton,984,712,82,29);
+    place(presetStatus,808,754,300,47); place(voiceStatus,1156,366,205,22); place(level,1188,674,154,150); place(footerStatus,415,872,570,14);
+}
+'''
+          s, n = re.subn(r'void VeloriaAudioProcessorEditor::resized\(\)\n\{.*?\n\}\s*$', resized_repl, s, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'resized replacement count {n}')
+          p.write_text(s)
+
+          # Scale the engine switch with the editor too.
+          p = Path('Source/PluginEditor.h')
+          s = p.read_text()
+          old = '            setBounds(103, 600, 215, 20);'
+          new = '''            const auto sx = static_cast<float>(editor.getWidth()) / 1400.0f;\n            const auto sy = static_cast<float>(editor.getHeight()) / 900.0f;\n            setBounds(juce::roundToInt(103.0f * sx), juce::roundToInt(600.0f * sy),\n                      juce::roundToInt(215.0f * sx), juce::roundToInt(20.0f * sy));'''
+          if old not in s:
+              raise SystemExit('engine button bounds marker not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target Veloria_VST3
+
+      - name: Commit integration after successful build
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/PluginEditor.h
+          git commit -m 'Add Veloria Club Beats and proportional editor resizing'
+          git push origin HEAD:agent/vst3-test-build
