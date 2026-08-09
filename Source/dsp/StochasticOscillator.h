@@ -61,6 +61,13 @@ public:
         activeBreakpointCount = static_cast<std::size_t>(juce::jlimit(4, static_cast<int>(numBreakpoints), value));
         if (segmentIndex >= activeBreakpointCount)
             segmentIndex = 0;
+
+        // Brown/IDSS cycle closure is always anchored at the currently active edges.
+        if (isBrownIdss())
+        {
+            amplitudes.front() = 0.0f;
+            amplitudes[activeBreakpointCount - 1] = 0.0f;
+        }
     }
     void setPitchStability(float value) noexcept { pitchStability = juce::jlimit(0.0f, 1.0f, value); }
     void setInterpolationShape(float value) noexcept { interpolationShape = juce::jlimit(0.0f, 1.0f, value); }
@@ -101,15 +108,44 @@ public:
         const auto driftRatio = static_cast<float>(count) / juce::jmax(0.001f, totalDuration);
         const auto pitchRatio = juce::jmap(pitchStability, driftRatio, 1.0f);
         const auto cyclesPerSample = static_cast<double>(frequency * pitchRatio) / sampleRate;
-        const auto segmentIncrement = cyclesPerSample
-                                    / juce::jmax(1.0e-8, static_cast<double>(normalisedDuration));
+        auto remainingAdvance = cyclesPerSample
+                              / juce::jmax(1.0e-8, static_cast<double>(normalisedDuration));
 
-        segmentPhase += segmentIncrement;
-        if (segmentPhase >= 1.0)
+        // A high note can cross more than one segment in a single sample. Advance
+        // robustly and evolve the stochastic field only when a complete waveform
+        // cycle has finished. This preserves the DSS model: waveform N is played as
+        // one coherent breakpoint field, then the whole field becomes waveform N+1.
+        while (remainingAdvance > 0.0)
         {
-            segmentPhase -= std::floor(segmentPhase);
-            evolveBreakpoint(segmentIndex);
-            segmentIndex = nextIndex;
+            const auto toBoundary = 1.0 - segmentPhase;
+            if (remainingAdvance < toBoundary)
+            {
+                segmentPhase += remainingAdvance;
+                break;
+            }
+
+            remainingAdvance -= toBoundary;
+            segmentPhase = 0.0;
+
+            if (segmentIndex + 1 >= count)
+            {
+                segmentIndex = 0;
+                evolveField();
+            }
+            else
+            {
+                ++segmentIndex;
+            }
+
+            // Recalculate the duration scale if a complete cycle evolved the field.
+            // This matters only when a single sample crosses multiple segments.
+            if (remainingAdvance > 0.0)
+            {
+                const auto refreshedTotal = durationSum();
+                const auto refreshedNormalised = durations[segmentIndex] / refreshedTotal;
+                remainingAdvance *= normalisedDuration
+                                  / juce::jmax(1.0e-8, static_cast<double>(refreshedNormalised));
+            }
         }
 
         return output * 0.82f;
@@ -150,7 +186,24 @@ private:
             durations[i] = 1.0f;
             amplitudeStepState[i] = 0.0f;
             timeStepState[i] = 0.0f;
+            amplitudeCascadeState[i] = 0.5f;
+            timeCascadeState[i] = 0.5f;
         }
+
+        if (isBrownIdss())
+        {
+            amplitudes.front() = 0.0f;
+            amplitudes[activeBreakpointCount - 1] = 0.0f;
+        }
+    }
+
+    void evolveField() noexcept
+    {
+        // Classical DSS/GENDYN evolves the complete set of breakpoint amplitude
+        // and duration coordinates between waveform repetitions. Updating the
+        // entire active field here keeps one cycle internally coherent.
+        for (std::size_t i = 0; i < activeBreakpointCount; ++i)
+            evolveBreakpoint(i);
 
         if (isBrownIdss())
         {
@@ -168,6 +221,8 @@ private:
         const auto maxAmpStep = juce::jmap(ampWalkControl, 0.0002f, 0.24f) * amplitudeStepScale;
         const auto maxTimeStep = juce::jmap(timeWalkControl, 0.0002f, 0.20f) * timeStepScale;
 
+        const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
+        const auto maximumDuration = 1.0f + timeMirror * 2.75f;
         const auto ampRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
         const auto timeRandom = distributedRandom(timeDistribution, timeWalk);
 
@@ -178,15 +233,55 @@ private:
                 -amplitudeMirror,
                 amplitudeMirror);
 
-            const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
-            const auto maximumDuration = 1.0f + timeMirror * 2.75f;
             durations[index] = reflect(
                 durations[index] + timeRandom * maxTimeStep,
                 minimumDuration,
                 maximumDuration);
         }
+        else if (isBrownIdss())
+        {
+            // Historical GENDYN/IDSS second-order behaviour is a cascade of two
+            // random walks. The first walk changes the permitted step range of the
+            // second; the second walk then supplies the momentum that moves the
+            // breakpoint. These are separate stochastic draws, not one integrated
+            // velocity state masquerading as a two-stage cascade.
+            const auto ampRangeRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
+            const auto timeRangeRandom = distributedRandom(timeDistribution, timeWalk);
+
+            amplitudeCascadeState[index] = reflect(
+                amplitudeCascadeState[index] + ampRangeRandom * (0.035f + ampWalkControl * 0.20f),
+                0.05f,
+                1.0f);
+            timeCascadeState[index] = reflect(
+                timeCascadeState[index] + timeRangeRandom * (0.035f + timeWalkControl * 0.20f),
+                0.05f,
+                1.0f);
+
+            const auto localAmpStep = maxAmpStep * amplitudeCascadeState[index];
+            const auto localTimeStep = maxTimeStep * timeCascadeState[index];
+
+            amplitudeStepState[index] = reflect(
+                amplitudeStepState[index] + ampRandom * localAmpStep * 0.35f,
+                -localAmpStep,
+                localAmpStep);
+            timeStepState[index] = reflect(
+                timeStepState[index] + timeRandom * localTimeStep * 0.35f,
+                -localTimeStep,
+                localTimeStep);
+
+            amplitudes[index] = reflect(
+                amplitudes[index] + amplitudeStepState[index],
+                -amplitudeMirror,
+                amplitudeMirror);
+            durations[index] = reflect(
+                durations[index] + timeStepState[index],
+                minimumDuration,
+                maximumDuration);
+        }
         else
         {
+            // Veloria's modern ORDER 2 deliberately retains the smoother momentum
+            // model developed for the playable instrument.
             amplitudeStepState[index] = reflect(
                 amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f,
                 -maxAmpStep,
@@ -202,8 +297,6 @@ private:
                 -amplitudeMirror,
                 amplitudeMirror);
 
-            const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
-            const auto maximumDuration = 1.0f + timeMirror * 2.75f;
             durations[index] = reflect(
                 durations[index] + timeStepState[index],
                 minimumDuration,
@@ -213,16 +306,22 @@ private:
         if (isBrownIdss())
         {
             // IDSS offered a zero-crossing constraint at the wave-cycle pivot.
-            // The two edge points are anchored here to retain that behaviour.
             if (index == 0 || index + 1 == activeBreakpointCount)
                 amplitudes[index] = 0.0f;
 
-            // Brown also provided a fixed-segment-length pitch mode. Rather than
-            // introduce another hidden switch, PITCH LOCK progressively becomes
-            // that stabiliser in IDSS mode while remaining continuous and playable.
+            // Brown's fixed-segment behaviour is tied to the time-mirror domain.
+            // PITCH LOCK remains a continuous Veloria performance control, but at
+            // its top end all duration points converge on a length derived from the
+            // current TIME BARRIER rather than an unrelated hard-coded 1.0 value.
             const auto fixedSegmentAmount = std::pow(pitchStability, 5.0f);
-            durations[index] = juce::jmap(fixedSegmentAmount, durations[index], 1.0f);
+            const auto fixedSegmentTarget = juce::jlimit(
+                minimumDuration,
+                maximumDuration,
+                juce::jmap(timeMirror, 0.05f, 1.0f, minimumDuration, maximumDuration));
+            durations[index] = juce::jmap(fixedSegmentAmount, durations[index], fixedSegmentTarget);
             timeStepState[index] *= (1.0f - fixedSegmentAmount * 0.92f);
+            timeCascadeState[index] = juce::jmap(fixedSegmentAmount * 0.85f,
+                                                  timeCascadeState[index], 0.5f);
         }
     }
 
@@ -312,6 +411,8 @@ private:
     std::array<float, numBreakpoints> durations {};
     std::array<float, numBreakpoints> amplitudeStepState {};
     std::array<float, numBreakpoints> timeStepState {};
+    std::array<float, numBreakpoints> amplitudeCascadeState {};
+    std::array<float, numBreakpoints> timeCascadeState {};
 
     juce::Random random { 1 };
     double sampleRate { 44100.0 };
