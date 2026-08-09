@@ -89,8 +89,25 @@ private:
         explicit RevisedWhatIfOverlay(VeloriaAudioProcessorEditor& editorToUse)
             : editor(editorToUse)
         {
-            setInterceptsMouseClicks(false, false);
+            setInterceptsMouseClicks(true, false);
             startTimerHz(12);
+        }
+
+        void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override
+        {
+            scrollBy(-wheel.deltaY * 260.0f);
+        }
+
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            lastDragY = e.position.y;
+        }
+
+        void mouseDrag(const juce::MouseEvent& e) override
+        {
+            const auto delta = lastDragY - e.position.y;
+            lastDragY = e.position.y;
+            scrollBy(delta);
         }
 
         void paint(juce::Graphics& g) override
@@ -108,116 +125,305 @@ private:
             g.setColour(gold.withAlpha(0.22f));
             g.drawRoundedRectangle(bounds.reduced(0.5f), 12.0f, 1.0f);
 
-            auto inner = bounds.reduced(24.0f);
-            auto header = inner.removeFromTop(78.0f);
+            juce::Graphics::ScopedSaveState scrollState(g);
+            g.reduceClipRegion(getLocalBounds().reduced(2));
+            g.addTransform(juce::AffineTransform::translation(0.0f, -scrollOffset));
+
+            auto inner = juce::Rectangle<float>(24.0f, 24.0f, bounds.getWidth() - 62.0f, contentHeight - 48.0f);
+            auto header = inner.removeFromTop(112.0f);
             g.setColour(gold.withAlpha(0.96f));
-            g.setFont(juce::FontOptions(26.0f, juce::Font::bold));
+            g.setFont(juce::FontOptions(31.0f, juce::Font::bold));
             g.drawText("WHAT IF?  //  THE SYNTHESIS INDUSTRY THAT NEVER HAPPENED",
-                       header.removeFromTop(36.0f).toNearestInt(), juce::Justification::centredLeft);
-            g.setColour(juce::Colours::white.withAlpha(0.62f));
-            g.setFont(juce::FontOptions(11.0f));
-            g.drawFittedText("First, the history that DID happen. Then the question Veloria asks: what if stochastic synthesis had received the same decades of instrument design as analogue synthesis?",
-                             header.toNearestInt(), juce::Justification::centredLeft, 2);
+                       header.removeFromTop(44.0f).toNearestInt(), juce::Justification::centredLeft);
+            g.setColour(juce::Colours::white.withAlpha(0.72f));
+            g.setFont(juce::FontOptions(15.0f));
+            g.drawFittedText("First, the history that DID happen. Then the question Veloria asks: what if stochastic synthesis had received decades of dedicated instrument design and musical refinement?",
+                             header.toNearestInt(), juce::Justification::centredLeft, 3);
+
+            inner.removeFromTop(14.0f);
+            drawHeroIllustration(g, inner.removeFromTop(290.0f), panel, gold, purple, magenta, cyan);
+            inner.removeFromTop(24.0f);
 
             auto sectionLabel = [&](const juce::String& text, juce::Colour colour)
             {
-                auto r = inner.removeFromTop(24.0f);
-                g.setColour(colour.withAlpha(0.90f));
-                g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+                auto r = inner.removeFromTop(34.0f);
+                g.setColour(colour.withAlpha(0.94f));
+                g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
                 g.drawText(text, r.toNearestInt(), juce::Justification::centredLeft);
-                inner.removeFromTop(7.0f);
+                inner.removeFromTop(10.0f);
             };
 
             auto historyCard = [&](juce::Rectangle<float> r, const juce::String& years,
                                    const juce::String& name, const juce::String& role,
                                    const juce::String& story, juce::Colour colour)
             {
-                g.setColour(panel.withAlpha(0.96f));
-                g.fillRoundedRectangle(r, 9.0f);
-                g.setColour(colour.withAlpha(0.28f));
-                g.drawRoundedRectangle(r, 9.0f, 1.0f);
-                auto c = r.reduced(15.0f);
-                g.setColour(colour.withAlpha(0.92f));
-                g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-                g.drawText(years, c.removeFromTop(20.0f).toNearestInt(), juce::Justification::centredLeft);
-                g.setColour(juce::Colours::white.withAlpha(0.95f));
-                g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
-                g.drawText(name, c.removeFromTop(28.0f).toNearestInt(), juce::Justification::centredLeft);
-                g.setColour(colour.withAlpha(0.82f));
-                g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-                g.drawText(role, c.removeFromTop(20.0f).toNearestInt(), juce::Justification::centredLeft);
-                c.removeFromTop(6.0f);
-                g.setColour(juce::Colours::white.withAlpha(0.64f));
-                g.setFont(juce::FontOptions(11.0f));
-                g.drawFittedText(story, c.toNearestInt(), juce::Justification::topLeft, 6);
+                g.setColour(panel.withAlpha(0.97f));
+                g.fillRoundedRectangle(r, 10.0f);
+                g.setColour(colour.withAlpha(0.34f));
+                g.drawRoundedRectangle(r, 10.0f, 1.2f);
+                auto c = r.reduced(20.0f);
+                g.setColour(colour.withAlpha(0.94f));
+                g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+                g.drawText(years, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
+                g.setColour(juce::Colours::white.withAlpha(0.97f));
+                g.setFont(juce::FontOptions(23.0f, juce::Font::bold));
+                g.drawText(name, c.removeFromTop(34.0f).toNearestInt(), juce::Justification::centredLeft);
+                g.setColour(colour.withAlpha(0.86f));
+                g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+                g.drawText(role, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
+                c.removeFromTop(8.0f);
+                g.setColour(juce::Colours::white.withAlpha(0.72f));
+                g.setFont(juce::FontOptions(14.0f));
+                g.drawFittedText(story, c.toNearestInt(), juce::Justification::topLeft, 7);
             };
 
             sectionLabel("REAL HISTORY  //  THE TWO FOUNDATIONAL MOMENTS", cyan);
-            auto realRow = inner.removeFromTop(214.0f);
-            auto xenakis = realRow.removeFromLeft((realRow.getWidth() - 14.0f) * 0.5f);
-            realRow.removeFromLeft(14.0f);
-            auto brown = realRow;
+            auto realRow = inner.removeFromTop(270.0f);
+            auto xenakis = realRow.removeFromLeft((realRow.getWidth() - 18.0f) * 0.5f);
+            realRow.removeFromLeft(18.0f);
             historyCard(xenakis, "1950s-1970s", "IANNIS XENAKIS", "THE FOUNDATIONAL MOMENT  //  INVENT THE LANGUAGE",
                         "Dynamic Stochastic Synthesis makes the waveform itself a probability system. Breakpoints, random walks, reflecting barriers and statistical distributions become a new grammar for generating sound.", gold);
-            historyCard(brown, "2004-2005", "ANDREW R. BROWN + GREG JENKINS", "THE INSTRUMENT MOMENT  //  MAKE IT PLAYABLE",
+            historyCard(realRow, "2004-2005", "ANDREW R. BROWN + GREG JENKINS", "THE INSTRUMENT MOMENT  //  MAKE IT PLAYABLE",
                         "IDSS turns DSS toward real-time musical interaction: finer step control, pitch stabilisation, interpolation choices and stochastic percussion gestures. The research language becomes something a performer can deliberately play.", magenta);
 
-            inner.removeFromTop(14.0f);
-            auto hinge = inner.removeFromTop(50.0f);
-            g.setColour(gold.withAlpha(0.13f));
-            g.fillRoundedRectangle(hinge, 7.0f);
-            g.setColour(gold.withAlpha(0.92f));
-            g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+            inner.removeFromTop(24.0f);
+            auto hinge = inner.removeFromTop(82.0f);
+            g.setColour(gold.withAlpha(0.14f));
+            g.fillRoundedRectangle(hinge, 8.0f);
+            g.setColour(gold.withAlpha(0.96f));
+            g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
             g.drawText("WHAT IF THE SYNTH INDUSTRY HAD TAKEN THAT BALL AND RUN WITH IT?",
-                       hinge.removeFromTop(25.0f).toNearestInt(), juce::Justification::centred);
-            g.setColour(juce::Colours::white.withAlpha(0.48f));
-            g.setFont(juce::FontOptions(9.5f));
+                       hinge.removeFromTop(42.0f).toNearestInt(), juce::Justification::centred);
+            g.setColour(juce::Colours::white.withAlpha(0.58f));
+            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
             g.drawText("THIS IS WHERE THE HISTORY THAT NEVER HAPPENED BEGINS.", hinge.toNearestInt(), juce::Justification::centred);
 
-            inner.removeFromTop(14.0f);
+            inner.removeFromTop(24.0f);
             sectionLabel("THE MISSING INDUSTRY  //  AN IMAGINED COMMERCIAL EVOLUTION", purple);
 
-            struct FutureCard { const char* name; const char* tag; const char* story; juce::Colour colour; };
+            struct FutureCard { const char* name; const char* tag; const char* story; juce::Colour colour; int visual; };
             const std::array<FutureCard, 4> futures {{
                 { "THE STOCHASTIC MONOSYNTH", "THE PERFORMANCE SYNTH",
-                  "Barrier Width becomes the big expressive control. Cauchy Step becomes the bite. Walk Order, distributions and pitch stabilisation are designed for hands-on playing rather than laboratory parameter entry.", magenta },
+                  "Barrier Width becomes the big expressive control. Cauchy Step becomes the bite. Walk Order, distributions and pitch stabilisation are designed for hands-on playing rather than laboratory parameter entry.", magenta, 0 },
                 { "THE STOCHASTIC ACID BOX", "THE BASS MACHINE",
-                  "A compact sequenced instrument discovers its own club language: mutation replaces filter sweep, probability shapes slide, and eruptive heavy-tailed jumps create a new kind of squelch without a diode ladder.", purple },
+                  "A compact sequenced instrument discovers its own club language: mutation replaces filter sweep, probability shapes slide, and eruptive heavy-tailed jumps create a new kind of squelch from waveform evolution itself.", purple, 1 },
                 { "THE STOCHASTIC DRUM MACHINE", "THE CLUB MACHINE",
-                  "Kick contraction, stochastic transients and dual-engine snares turn Brown's percussion insight into a complete rhythm instrument. The chaos is not added noise; it is the drum's waveform evolving in time.", cyan },
+                  "Kick contraction, stochastic transients and dual-engine snares turn Brown's percussion insight into a complete rhythm instrument. The chaos is not added noise; it is the drum's waveform evolving in time.", cyan, 2 },
                 { "VELORIA 2026", "THE MISSING FIFTY YEARS",
-                  "Polyphony, family-aware presets, expressive pressure, recallable stochastic fields and a living mathematical interface. Not a recreation of one historical machine, but the instrument this synthesis lineage might have grown into.", gold }
+                  "Polyphony, family-aware presets, expressive pressure, recallable stochastic fields and a living mathematical interface. Not a recreation of one historical machine, but the instrument this synthesis lineage might have grown into.", gold, 3 }
             }};
 
-            const float gap = 12.0f;
-            const float cardW = (inner.getWidth() - gap) * 0.5f;
-            const float cardH = (inner.getHeight() - gap) * 0.5f;
-            for (int i = 0; i < 4; ++i)
+            for (const auto& f : futures)
             {
-                const int row = i / 2, col = i % 2;
-                auto r = juce::Rectangle<float>(inner.getX() + col * (cardW + gap),
-                                                inner.getY() + row * (cardH + gap),
-                                                cardW, cardH);
-                const auto& f = futures[(std::size_t)i];
-                g.setColour(panel.withAlpha(0.94f));
-                g.fillRoundedRectangle(r, 8.0f);
-                g.setColour(f.colour.withAlpha(0.25f));
-                g.drawRoundedRectangle(r, 8.0f, 1.0f);
-                auto c = r.reduced(14.0f);
-                g.setColour(juce::Colours::white.withAlpha(0.94f));
-                g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-                g.drawText(f.name, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
-                g.setColour(f.colour.withAlpha(0.80f));
-                g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-                g.drawText(f.tag, c.removeFromTop(18.0f).toNearestInt(), juce::Justification::centredLeft);
-                c.removeFromTop(5.0f);
-                g.setColour(juce::Colours::white.withAlpha(0.60f));
-                g.setFont(juce::FontOptions(10.0f));
-                g.drawFittedText(f.story, c.toNearestInt(), juce::Justification::topLeft, 5);
+                auto r = inner.removeFromTop(210.0f);
+                g.setColour(panel.withAlpha(0.96f));
+                g.fillRoundedRectangle(r, 9.0f);
+                g.setColour(f.colour.withAlpha(0.28f));
+                g.drawRoundedRectangle(r, 9.0f, 1.1f);
+
+                auto c = r.reduced(18.0f);
+                auto visual = c.removeFromRight(360.0f);
+                c.removeFromRight(20.0f);
+                g.setColour(juce::Colours::white.withAlpha(0.96f));
+                g.setFont(juce::FontOptions(20.0f, juce::Font::bold));
+                g.drawText(f.name, c.removeFromTop(32.0f).toNearestInt(), juce::Justification::centredLeft);
+                g.setColour(f.colour.withAlpha(0.86f));
+                g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+                g.drawText(f.tag, c.removeFromTop(24.0f).toNearestInt(), juce::Justification::centredLeft);
+                c.removeFromTop(7.0f);
+                g.setColour(juce::Colours::white.withAlpha(0.70f));
+                g.setFont(juce::FontOptions(14.0f));
+                g.drawFittedText(f.story, c.toNearestInt(), juce::Justification::topLeft, 7);
+                drawFutureVisual(g, visual, f.colour, f.visual);
+                inner.removeFromTop(14.0f);
             }
+
+            auto footer = inner.removeFromTop(54.0f);
+            g.setColour(gold.withAlpha(0.82f));
+            g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+            g.drawText("VELORIA  //  THE INSTRUMENT FROM THE SYNTHESIS HISTORY THAT NEVER HAPPENED",
+                       footer.toNearestInt(), juce::Justification::centred);
+
+            scrollState.restore();
+            drawScrollbar(g, bounds);
         }
 
     private:
+        void scrollBy(float amount)
+        {
+            const auto maxScroll = juce::jmax(0.0f, contentHeight - (float)getHeight());
+            scrollOffset = juce::jlimit(0.0f, maxScroll, scrollOffset + amount);
+            repaint();
+        }
+
+        void drawScrollbar(juce::Graphics& g, juce::Rectangle<float> bounds)
+        {
+            const auto maxScroll = juce::jmax(0.0f, contentHeight - bounds.getHeight());
+            if (maxScroll <= 0.0f)
+                return;
+
+            auto track = juce::Rectangle<float>(bounds.getRight() - 11.0f, bounds.getY() + 14.0f, 4.0f, bounds.getHeight() - 28.0f);
+            g.setColour(juce::Colours::white.withAlpha(0.08f));
+            g.fillRoundedRectangle(track, 2.0f);
+            const auto thumbH = juce::jmax(44.0f, track.getHeight() * bounds.getHeight() / contentHeight);
+            const auto travel = track.getHeight() - thumbH;
+            const auto thumbY = track.getY() + travel * (scrollOffset / maxScroll);
+            g.setColour(juce::Colour::fromRGB(255, 184, 86).withAlpha(0.60f));
+            g.fillRoundedRectangle(track.getX() - 1.0f, thumbY, 6.0f, thumbH, 3.0f);
+        }
+
+        static void drawRandomWalk(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour, int seed)
+        {
+            juce::Random random(seed);
+            juce::Path path;
+            float y = area.getCentreY();
+            path.startNewSubPath(area.getX(), y);
+            for (int i = 1; i <= 34; ++i)
+            {
+                const auto x = area.getX() + area.getWidth() * (float)i / 34.0f;
+                y += (random.nextFloat() - 0.5f) * area.getHeight() * 0.24f;
+                y = juce::jlimit(area.getY() + 5.0f, area.getBottom() - 5.0f, y);
+                path.lineTo(x, y);
+            }
+            g.setColour(colour.withAlpha(0.92f));
+            g.strokePath(path, juce::PathStrokeType(1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+
+        static void drawHeroIllustration(juce::Graphics& g, juce::Rectangle<float> r,
+                                         juce::Colour panel, juce::Colour gold,
+                                         juce::Colour purple, juce::Colour magenta,
+                                         juce::Colour cyan)
+        {
+            g.setColour(panel.withAlpha(0.97f));
+            g.fillRoundedRectangle(r, 11.0f);
+            g.setColour(gold.withAlpha(0.30f));
+            g.drawRoundedRectangle(r, 11.0f, 1.2f);
+            auto c = r.reduced(20.0f);
+            g.setColour(juce::Colours::white.withAlpha(0.92f));
+            g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+            g.drawText("FROM THEORY TO INSTRUMENT  //  THE VISUAL STORY", c.removeFromTop(28.0f).toNearestInt(), juce::Justification::centredLeft);
+            c.removeFromTop(8.0f);
+
+            const auto gap = 16.0f;
+            const auto w = (c.getWidth() - gap * 2.0f) / 3.0f;
+            auto theory = c.removeFromLeft(w); c.removeFromLeft(gap);
+            auto instrument = c.removeFromLeft(w); c.removeFromLeft(gap);
+            auto industry = c;
+
+            for (auto box : { theory, instrument, industry })
+            {
+                g.setColour(juce::Colour::fromRGB(3, 4, 8).withAlpha(0.96f));
+                g.fillRoundedRectangle(box, 8.0f);
+                g.setColour(juce::Colours::white.withAlpha(0.08f));
+                g.drawRoundedRectangle(box, 8.0f, 1.0f);
+            }
+
+            auto t = theory.reduced(15.0f);
+            g.setColour(gold.withAlpha(0.88f)); g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+            g.drawText("STOCHASTIC WAVEFORM", t.removeFromTop(22.0f).toNearestInt(), juce::Justification::centredLeft);
+            auto graph = t.reduced(0.0f, 8.0f);
+            g.setColour(gold.withAlpha(0.22f));
+            for (int i = 1; i < 4; ++i)
+            {
+                const auto y = graph.getY() + graph.getHeight() * (float)i / 4.0f;
+                g.drawHorizontalLine((int)y, graph.getX(), graph.getRight());
+            }
+            drawRandomWalk(g, graph, gold, 77);
+
+            auto s = instrument.reduced(15.0f);
+            g.setColour(magenta.withAlpha(0.88f)); g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+            g.drawText("PLAYABLE DSS", s.removeFromTop(22.0f).toNearestInt(), juce::Justification::centredLeft);
+            auto panelArea = s.removeFromTop(90.0f).reduced(5.0f);
+            g.setColour(juce::Colour::fromRGB(57, 45, 50)); g.fillRoundedRectangle(panelArea, 5.0f);
+            for (int k = 0; k < 5; ++k)
+            {
+                const auto x = panelArea.getX() + 24.0f + k * 50.0f;
+                g.setColour((k % 2 == 0 ? magenta : purple).withAlpha(0.84f));
+                g.fillEllipse(x, panelArea.getY() + 20.0f, 18.0f, 18.0f);
+            }
+            auto keys = s.removeFromBottom(60.0f);
+            for (int k = 0; k < 16; ++k)
+            {
+                auto key = juce::Rectangle<float>(keys.getX() + k * keys.getWidth() / 16.0f, keys.getY(), keys.getWidth() / 16.0f - 1.0f, keys.getHeight());
+                g.setColour(k % 7 == 1 || k % 7 == 4 ? juce::Colours::black : juce::Colours::ivory);
+                g.fillRect(key);
+            }
+
+            auto d = industry.reduced(15.0f);
+            g.setColour(cyan.withAlpha(0.88f)); g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+            g.drawText("THE MISSING INDUSTRY", d.removeFromTop(22.0f).toNearestInt(), juce::Justification::centredLeft);
+            auto machine = d.reduced(2.0f, 10.0f);
+            g.setColour(juce::Colour::fromRGB(42, 42, 48)); g.fillRoundedRectangle(machine, 6.0f);
+            for (int k = 0; k < 16; ++k)
+            {
+                const auto x = machine.getX() + 9.0f + k * (machine.getWidth() - 18.0f) / 16.0f;
+                g.setColour((k % 4 == 0 ? gold : cyan).withAlpha(0.80f));
+                g.fillRoundedRectangle(x, machine.getBottom() - 26.0f, 9.0f, 14.0f, 2.0f);
+            }
+            drawRandomWalk(g, machine.reduced(20.0f, 42.0f), cyan, 210);
+        }
+
+        static void drawFutureVisual(juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour, int kind)
+        {
+            g.setColour(juce::Colour::fromRGB(3, 4, 8).withAlpha(0.96f));
+            g.fillRoundedRectangle(r, 7.0f);
+            g.setColour(colour.withAlpha(0.20f));
+            g.drawRoundedRectangle(r, 7.0f, 1.0f);
+            auto v = r.reduced(14.0f);
+
+            if (kind == 0)
+            {
+                auto keys = v.removeFromBottom(46.0f);
+                g.setColour(juce::Colour::fromRGB(66, 46, 48)); g.fillRoundedRectangle(v, 5.0f);
+                for (int k = 0; k < 5; ++k)
+                {
+                    const auto x = v.getX() + 24.0f + k * 56.0f;
+                    g.setColour(colour.withAlpha(0.88f)); g.fillEllipse(x, v.getY() + 26.0f, 20.0f, 20.0f);
+                }
+                for (int k = 0; k < 14; ++k)
+                {
+                    auto key = juce::Rectangle<float>(keys.getX() + k * keys.getWidth() / 14.0f, keys.getY(), keys.getWidth() / 14.0f - 1.0f, keys.getHeight());
+                    g.setColour(k % 7 == 1 || k % 7 == 4 ? juce::Colours::black : juce::Colours::ivory); g.fillRect(key);
+                }
+            }
+            else if (kind == 1)
+            {
+                g.setColour(juce::Colour::fromRGB(170, 170, 168)); g.fillRoundedRectangle(v, 5.0f);
+                for (int k = 0; k < 8; ++k)
+                {
+                    const auto x = v.getX() + 16.0f + k * 38.0f;
+                    g.setColour(juce::Colour::fromRGB(45, 45, 48)); g.fillRoundedRectangle(x, v.getBottom() - 42.0f, 20.0f, 28.0f, 2.0f);
+                    g.setColour(colour.withAlpha(0.90f)); g.fillRect(x + 8.0f, v.getY() + 22.0f, 4.0f, 45.0f + (float)(k % 3) * 12.0f);
+                }
+            }
+            else if (kind == 2)
+            {
+                g.setColour(juce::Colour::fromRGB(202, 193, 174)); g.fillRoundedRectangle(v, 5.0f);
+                for (int k = 0; k < 16; ++k)
+                {
+                    const auto x = v.getX() + 8.0f + k * (v.getWidth() - 16.0f) / 16.0f;
+                    g.setColour((k % 4 == 0 ? colour : juce::Colour::fromRGB(170, 88, 40)).withAlpha(0.92f));
+                    g.fillRoundedRectangle(x, v.getBottom() - 26.0f, 10.0f, 14.0f, 2.0f);
+                }
+                drawRandomWalk(g, v.reduced(18.0f, 48.0f), colour, 311);
+            }
+            else
+            {
+                const auto centre = v.getCentre();
+                const auto radius = juce::jmin(v.getWidth(), v.getHeight()) * 0.36f;
+                g.setColour(colour.withAlpha(0.10f)); g.fillEllipse(centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
+                for (int i = 0; i < 90; ++i)
+                {
+                    const auto angle = (float)i * 2.39996323f;
+                    const auto rr = radius * std::sqrt((float)(i + 1) / 90.0f);
+                    const auto p = centre + juce::Point<float>(std::cos(angle) * rr, std::sin(angle) * rr * 0.72f);
+                    g.setColour((i % 11 == 0 ? juce::Colours::white : colour).withAlpha(0.65f));
+                    g.fillEllipse(p.x - 1.0f, p.y - 1.0f, 2.0f, 2.0f);
+                }
+                drawRandomWalk(g, v.reduced(28.0f, 50.0f), colour, 510);
+            }
+        }
+
         void timerCallback() override
         {
             if (getParentComponent() == nullptr)
@@ -229,6 +435,9 @@ private:
         }
 
         VeloriaAudioProcessorEditor& editor;
+        float scrollOffset { 0.0f };
+        float lastDragY { 0.0f };
+        static constexpr float contentHeight = 1920.0f;
     };
 
     void timerCallback() override;
