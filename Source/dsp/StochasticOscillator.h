@@ -62,7 +62,6 @@ public:
         if (segmentIndex >= activeBreakpointCount)
             segmentIndex = 0;
 
-        // Brown/IDSS cycle closure is always anchored at the currently active edges.
         if (isBrownIdss())
         {
             amplitudes.front() = 0.0f;
@@ -94,37 +93,42 @@ public:
             segmentIndex = 0;
 
         const auto nextIndex = (segmentIndex + 1) % count;
-        const auto rawT = static_cast<float>(segmentPhase);
+        const auto rawT = juce::jlimit(0.0f, 1.0f, static_cast<float>(segmentPhase));
         const auto t = interpolationFor(rawT);
         const auto output = amplitudes[segmentIndex]
                           + (amplitudes[nextIndex] - amplitudes[segmentIndex]) * t;
 
         const auto totalDuration = durationSum();
-        const auto normalisedDuration = durations[segmentIndex] / totalDuration;
-
-        // Veloria can continuously normalise the emergent duration field back toward
-        // keyboard pitch. Brown IDSS mode additionally makes high PITCH LOCK behave
-        // like IDSS's fixed-segment-length stabilisation control.
         const auto driftRatio = static_cast<float>(count) / juce::jmax(0.001f, totalDuration);
         const auto pitchRatio = juce::jmap(pitchStability, driftRatio, 1.0f);
-        const auto cyclesPerSample = static_cast<double>(frequency * pitchRatio) / sampleRate;
-        auto remainingAdvance = cyclesPerSample
-                              / juce::jmax(1.0e-8, static_cast<double>(normalisedDuration));
+        auto remainingCycleTime = static_cast<double>(frequency * pitchRatio) / sampleRate;
 
-        // A high note can cross more than one segment in a single sample. Advance
-        // robustly and evolve the stochastic field only when a complete waveform
-        // cycle has finished. This preserves the DSS model: waveform N is played as
-        // one coherent breakpoint field, then the whole field becomes waveform N+1.
-        while (remainingAdvance > 0.0)
+        // Advance using cycle-time rather than repeatedly rescaling a segment-phase
+        // remainder. Each crossed segment consumes a strictly positive amount of
+        // cycle time, so stochastic duration changes can never make the remainder
+        // grow and lock the real-time audio thread.
+        constexpr int maxSegmentCrossingsPerSample = 64;
+        for (int crossing = 0;
+             crossing < maxSegmentCrossingsPerSample && remainingCycleTime > 0.0;
+             ++crossing)
         {
-            const auto toBoundary = 1.0 - segmentPhase;
-            if (remainingAdvance < toBoundary)
+            const auto refreshedTotal = durationSum();
+            const auto segmentDuration = juce::jmax(
+                1.0e-8,
+                static_cast<double>(durations[segmentIndex])
+                    / juce::jmax(0.001, static_cast<double>(refreshedTotal)));
+            const auto remainingInSegment = juce::jmax(
+                0.0,
+                (1.0 - segmentPhase) * segmentDuration);
+
+            if (remainingCycleTime < remainingInSegment)
             {
-                segmentPhase += remainingAdvance;
+                segmentPhase += remainingCycleTime / segmentDuration;
+                remainingCycleTime = 0.0;
                 break;
             }
 
-            remainingAdvance -= toBoundary;
+            remainingCycleTime -= remainingInSegment;
             segmentPhase = 0.0;
 
             if (segmentIndex + 1 >= count)
@@ -136,19 +140,15 @@ public:
             {
                 ++segmentIndex;
             }
-
-            // Recalculate the duration scale if a complete cycle evolved the field.
-            // This matters only when a single sample crosses multiple segments.
-            if (remainingAdvance > 0.0)
-            {
-                const auto refreshedTotal = durationSum();
-                const auto refreshedNormalised = durations[segmentIndex] / refreshedTotal;
-                remainingAdvance *= normalisedDuration
-                                  / juce::jmax(1.0e-8, static_cast<double>(refreshedNormalised));
-            }
         }
 
-        return output * 0.82f;
+        // Safety guard for malformed host/sample-rate states. Under the normal
+        // 20 Hz-18 kHz operating range the traversal above finishes far below 64
+        // crossings, but no oscillator state is allowed to monopolise the audio thread.
+        if (! std::isfinite(segmentPhase) || remainingCycleTime > 0.0)
+            segmentPhase = 0.0;
+
+        return std::isfinite(output) ? output * 0.82f : 0.0f;
     }
 
 private:
@@ -165,9 +165,6 @@ private:
             return juce::jmap(interpolationShape, rawT, smoothT);
         }
 
-        // Brown's IDSS exposed linear, cosine and square interpolation choices.
-        // Veloria keeps one CURVE control and continuously morphs through those
-        // three historically documented IDSS behaviours.
         const auto cosineT = 0.5f - 0.5f * std::cos(juce::MathConstants<float>::pi * rawT);
         const auto squareT = rawT * rawT;
         if (interpolationShape <= 0.5f)
@@ -199,9 +196,6 @@ private:
 
     void evolveField() noexcept
     {
-        // Classical DSS/GENDYN evolves the complete set of breakpoint amplitude
-        // and duration coordinates between waveform repetitions. Updating the
-        // entire active field here keeps one cycle internally coherent.
         for (std::size_t i = 0; i < activeBreakpointCount; ++i)
             evolveBreakpoint(i);
 
@@ -214,8 +208,6 @@ private:
 
     void evolveBreakpoint(std::size_t index) noexcept
     {
-        // Brown's IDSS used exponential step slider scaling to gain much finer
-        // control over gentle stochastic pitch/timbre motion near zero.
         const auto ampWalkControl = isBrownIdss() ? std::pow(amplitudeWalk, 2.15f) : amplitudeWalk;
         const auto timeWalkControl = isBrownIdss() ? std::pow(timeWalk, 2.35f) : timeWalk;
         const auto maxAmpStep = juce::jmap(ampWalkControl, 0.0002f, 0.24f) * amplitudeStepScale;
@@ -240,11 +232,6 @@ private:
         }
         else if (isBrownIdss())
         {
-            // Historical GENDYN/IDSS second-order behaviour is a cascade of two
-            // random walks. The first walk changes the permitted step range of the
-            // second; the second walk then supplies the momentum that moves the
-            // breakpoint. These are separate stochastic draws, not one integrated
-            // velocity state masquerading as a two-stage cascade.
             const auto ampRangeRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
             const auto timeRangeRandom = distributedRandom(timeDistribution, timeWalk);
 
@@ -280,8 +267,6 @@ private:
         }
         else
         {
-            // Veloria's modern ORDER 2 deliberately retains the smoother momentum
-            // model developed for the playable instrument.
             amplitudeStepState[index] = reflect(
                 amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f,
                 -maxAmpStep,
@@ -305,14 +290,9 @@ private:
 
         if (isBrownIdss())
         {
-            // IDSS offered a zero-crossing constraint at the wave-cycle pivot.
             if (index == 0 || index + 1 == activeBreakpointCount)
                 amplitudes[index] = 0.0f;
 
-            // Brown's fixed-segment behaviour is tied to the time-mirror domain.
-            // PITCH LOCK remains a continuous Veloria performance control, but at
-            // its top end all duration points converge on a length derived from the
-            // current TIME BARRIER rather than an unrelated hard-coded 1.0 value.
             const auto fixedSegmentAmount = std::pow(pitchStability, 5.0f);
             const auto fixedSegmentTarget = juce::jlimit(
                 minimumDuration,
@@ -329,7 +309,7 @@ private:
     {
         float total = 0.0f;
         for (std::size_t i = 0; i < activeBreakpointCount; ++i)
-            total += durations[i];
+            total += std::isfinite(durations[i]) ? durations[i] : 1.0f;
         return juce::jmax(0.001f, total);
     }
 
@@ -394,17 +374,19 @@ private:
 
     [[nodiscard]] static float reflect(float value, float minimum, float maximum) noexcept
     {
+        if (! std::isfinite(value) || ! std::isfinite(minimum) || ! std::isfinite(maximum))
+            return 0.5f * (minimum + maximum);
         if (maximum <= minimum)
             return minimum;
 
-        while (value < minimum || value > maximum)
-        {
-            if (value > maximum)
-                value = maximum - (value - maximum);
-            else
-                value = minimum + (minimum - value);
-        }
-        return value;
+        const auto span = maximum - minimum;
+        const auto period = span * 2.0f;
+        auto folded = std::fmod(value - minimum, period);
+        if (folded < 0.0f)
+            folded += period;
+        if (folded > span)
+            folded = period - folded;
+        return minimum + folded;
     }
 
     std::array<float, numBreakpoints> amplitudes {};
