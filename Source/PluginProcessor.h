@@ -213,6 +213,7 @@ private:
         StableADSR envelope;
         int midiNote { -1 };
         bool active { false };
+        bool held { false };
         bool percussion { false };
         std::uint64_t age { 0 };
 
