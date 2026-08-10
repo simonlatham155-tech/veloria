@@ -51,12 +51,55 @@ string(REPLACE
 # CHAOS is a stochastic-intensity macro, not a pitch control. Each tonal voice is
 # already created from its MIDI note. CHAOS may increase amplitude/time movement
 # and step depth, but it must never move PITCH LOCK underneath the performer.
-# Leaving pitchStability independent removes the audible pitch/key-range stepping
-# that occurred when CHAOS was previously coupled to pitch anchoring.
 string(REPLACE
     "const auto effectivePitchStability = juce::jlimit(0.0f, 1.0f, pitchStability * (1.0f - chaosSquared * 0.58f));"
     "const auto effectivePitchStability = pitchStability;"
     VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+
+# Smooth stochastic controls. The six distribution laws remain genuine discrete
+# algorithms internally, but the parameter is continuous and the oscillator
+# cross-morphs adjacent statistical outputs. POINTS similarly grows the next
+# breakpoint continuously out of the closing segment.
+string(REPLACE
+    "layout.push_back(std::make_unique<juce::AudioParameterInt>(\"ampDist\", \"Amplitude Distribution\", 0, 5, 0));"
+    "layout.push_back(std::make_unique<juce::AudioParameterFloat>(\"ampDist\", \"Amplitude Distribution Morph\", juce::NormalisableRange<float>(0.0f, 5.0f), 0.0f));"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+string(REPLACE
+    "layout.push_back(std::make_unique<juce::AudioParameterInt>(\"timeDist\", \"Time Distribution\", 0, 5, 0));"
+    "layout.push_back(std::make_unique<juce::AudioParameterFloat>(\"timeDist\", \"Time Distribution Morph\", juce::NormalisableRange<float>(0.0f, 5.0f), 0.0f));"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+string(REPLACE
+    "layout.push_back(std::make_unique<juce::AudioParameterInt>(\"breakpoints\", \"Breakpoints\", 4, 12, 12));"
+    "layout.push_back(std::make_unique<juce::AudioParameterFloat>(\"breakpoints\", \"Breakpoint Morph\", juce::NormalisableRange<float>(4.0f, 12.0f), 12.0f));"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+
+string(REPLACE
+    "const auto ampDist = distributionFromParameter(parameters.getRawParameterValue(\"ampDist\")->load());"
+    "const auto ampDist = parameters.getRawParameterValue(\"ampDist\")->load();"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+string(REPLACE
+    "const auto timeDist = distributionFromParameter(parameters.getRawParameterValue(\"timeDist\")->load());"
+    "const auto timeDist = parameters.getRawParameterValue(\"timeDist\")->load();"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+string(REPLACE
+    "const auto breakpoints = static_cast<int>(std::lround(parameters.getRawParameterValue(\"breakpoints\")->load()));"
+    "const auto breakpoints = parameters.getRawParameterValue(\"breakpoints\")->load();"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+string(REPLACE
+    "voice.oscillator.setAmplitudeDistribution(ampDist);"
+    "voice.oscillator.setAmplitudeDistributionMorph(ampDist);"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+string(REPLACE
+    "voice.oscillator.setTimeDistribution(timeDist);"
+    "voice.oscillator.setTimeDistributionMorph(timeDist);"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+
+# Let the three morph knobs show their in-between positions instead of visually
+# pretending they are still hard integer selectors.
+string(REPLACE
+    "ampDist.setNumDecimalPlacesToDisplay(0); timeDist.setNumDecimalPlacesToDisplay(0); breakpoints.setNumDecimalPlacesToDisplay(0);"
+    "ampDist.setNumDecimalPlacesToDisplay(2); timeDist.setNumDecimalPlacesToDisplay(2); breakpoints.setNumDecimalPlacesToDisplay(2);"
+    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
 
 # Replace only the VELORIA wordmark. LATHAMAUDIO and the rest of the header remain untouched.
 set(OLD_WORDMARK [[void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<float> area)
