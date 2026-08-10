@@ -48,9 +48,9 @@ string(REPLACE
     "#include <JuceHeader.h>\n#include <BinaryData.h>"
     VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
-# CHAOS is a stochastic-intensity macro, not a pitch control. Each tonal voice is
-# already created from its MIDI note. CHAOS may increase amplitude/time movement
-# and step depth, but it must never move PITCH LOCK underneath the performer.
+# CHAOS no longer detunes the performed pitch centre. The shared note-event layer
+# in PluginProcessor.h supplies the actual harmonic stochastic takeover in both
+# VELORIA and BROWN IDSS operating models.
 string(REPLACE
     "const auto effectivePitchStability = juce::jlimit(0.0f, 1.0f, pitchStability * (1.0f - chaosSquared * 0.58f));"
     "const auto effectivePitchStability = pitchStability;"
@@ -234,9 +234,9 @@ set(WHATIF_TOP_REPLACEMENT [[                inner.removeFromTop(14.0f);
 ]])
 string(REPLACE "${WHATIF_TOP_VISUAL}" "${WHATIF_TOP_REPLACEMENT}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
-# Put the supplied history artwork after every history/future text card and
-# immediately before the closing Veloria footer. Render close to native pixel
-# dimensions and explicitly use JUCE high-quality image resampling.
+# Put the supplied history artwork after the written history. Do not force it into
+# a fixed 900x1272 box: use the embedded image's real aspect ratio and never scale
+# above its native pixel width. That prevents the 'blown-up thumbnail' look.
 set(WHATIF_FOOTER [[                auto footer = inner.removeFromTop(54.0f);
 ]])
 set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
@@ -246,22 +246,28 @@ set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
                         BinaryData::what_if_history_jpg,
                         BinaryData::what_if_history_jpgSize);
 
-                    auto imageBand = inner.removeFromTop(1310.0f);
-                    auto picture = imageBand.withSizeKeepingCentre(900.0f, 1272.0f);
-                    g.setColour(panel.withAlpha(0.97f));
-                    g.fillRoundedRectangle(picture.expanded(10.0f), 10.0f);
-                    g.setColour(gold.withAlpha(0.30f));
-                    g.drawRoundedRectangle(picture.expanded(10.0f), 10.0f, 1.2f);
-
                     if (historyImage.isValid())
                     {
+                        const auto nativeW = (float) historyImage.getWidth();
+                        const auto nativeH = (float) historyImage.getHeight();
+                        const auto availableW = juce::jmax(1.0f, inner.getWidth() - 32.0f);
+                        const auto pictureW = juce::jmin(nativeW, availableW);
+                        const auto pictureH = pictureW * nativeH / juce::jmax(1.0f, nativeW);
+                        auto imageBand = inner.removeFromTop(pictureH + 24.0f);
+                        auto picture = juce::Rectangle<float>(0.0f, 0.0f, pictureW, pictureH)
+                                           .withCentre(imageBand.getCentre());
+
+                        g.setColour(panel.withAlpha(0.97f));
+                        g.fillRoundedRectangle(picture.expanded(10.0f), 10.0f);
+                        g.setColour(gold.withAlpha(0.30f));
+                        g.drawRoundedRectangle(picture.expanded(10.0f), 10.0f, 1.2f);
+
                         juce::Graphics::ScopedSaveState imageState(g);
                         g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-                        g.drawImageWithin(historyImage,
-                                          (int) picture.getX(), (int) picture.getY(),
-                                          (int) picture.getWidth(), (int) picture.getHeight(),
-                                          juce::RectanglePlacement::centred,
-                                          false);
+                        g.drawImage(historyImage,
+                                    picture.getX(), picture.getY(), picture.getWidth(), picture.getHeight(),
+                                    0.0f, 0.0f, nativeW, nativeH,
+                                    false);
                     }
                 }
                 inner.removeFromTop(28.0f);
@@ -270,9 +276,9 @@ set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
 ]])
 string(REPLACE "${WHATIF_FOOTER}" "${WHATIF_BOTTOM_PICTURE}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
-# Extend the scroll document to include the full portrait history artwork.
+# Allow enough scroll room for the full portrait at its real aspect ratio.
 string(REPLACE "static constexpr float contentHeight = 1920.0f;"
-               "static constexpr float contentHeight = 3050.0f;"
+               "static constexpr float contentHeight = 3370.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Processor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
