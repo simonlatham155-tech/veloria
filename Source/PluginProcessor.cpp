@@ -40,7 +40,8 @@ const std::array<const char*, VeloriaAudioProcessor::midiLearnParameterCount>
 VeloriaAudioProcessor::midiLearnParameterIds {{
     "ampWalk", "timeWalk", "ampMirror", "timeMirror",
     "ampDist", "timeDist", "ampStep", "timeStep",
-    "chaos", "breakpoints", "pitchStability", "curve",
+    "chaos", "boundary", "rate", "jump", "correlation",
+    "breakpoints", "pitchStability", "curve",
     "attack", "decay", "sustain", "release", "seed", "level"
 }};
 
@@ -66,6 +67,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout VeloriaAudioProcessor::creat
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("ampStep", "Amplitude Step", juce::NormalisableRange<float>(0.10f, 2.0f), 1.0f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("timeStep", "Time Step", juce::NormalisableRange<float>(0.10f, 2.0f), 1.0f));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("chaos", "Chaos", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>("boundary", "Boundary Drive", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>("rate", "Stochastic Rate", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>("jump", "Stochastic Jump", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    layout.push_back(std::make_unique<juce::AudioParameterFloat>("correlation", "Correlation", juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     layout.push_back(std::make_unique<juce::AudioParameterInt>("walkOrder", "Walk Order", 1, 2, 2));
     layout.push_back(std::make_unique<juce::AudioParameterInt>("breakpoints", "Breakpoints", 4, 12, 12));
     layout.push_back(std::make_unique<juce::AudioParameterFloat>("pitchStability", "Pitch Stability", juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
@@ -436,6 +441,10 @@ void VeloriaAudioProcessor::updateVoiceParameters()
     const auto ampStep = parameters.getRawParameterValue("ampStep")->load();
     const auto timeStep = parameters.getRawParameterValue("timeStep")->load();
     const auto chaos = parameters.getRawParameterValue("chaos")->load();
+    const auto boundary = parameters.getRawParameterValue("boundary")->load();
+    const auto rate = parameters.getRawParameterValue("rate")->load();
+    const auto jump = parameters.getRawParameterValue("jump")->load();
+    const auto correlation = parameters.getRawParameterValue("correlation")->load();
     const auto walkOrder = static_cast<int>(std::lround(parameters.getRawParameterValue("walkOrder")->load()));
     const auto breakpoints = static_cast<int>(std::lround(parameters.getRawParameterValue("breakpoints")->load()));
     const auto pitchStability = parameters.getRawParameterValue("pitchStability")->load();
@@ -469,6 +478,10 @@ void VeloriaAudioProcessor::updateVoiceParameters()
         voice.oscillator.setActiveBreakpointCount(breakpoints);
         voice.oscillator.setPitchStability(expressivePitchLock);
         voice.oscillator.setInterpolationShape(curve);
+        voice.oscillator.setBoundaryDrive(boundary);
+        voice.oscillator.setStochasticRate(rate);
+        voice.oscillator.setJump(jump);
+        voice.oscillator.setCorrelation(correlation);
 
         if (voice.percussion)
             continue;

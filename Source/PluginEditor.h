@@ -62,7 +62,7 @@ private:
             if (getParentComponent() == nullptr)
                 editor.addAndMakeVisible(*this);
 
-            setBounds(103, 600, 215, 20);
+            setBounds(103, 654, 215, 20);
             setVisible(! editor.whatIfOpen);
             updateAppearance();
         }
@@ -460,6 +460,7 @@ private:
     MidiLearnSlider ampWalk, timeWalk, ampMirror, timeMirror;
     MidiLearnSlider ampDist, timeDist, ampStep, timeStep;
     MidiLearnSlider chaos, breakpoints, pitchStability, curve;
+    MidiLearnSlider boundary, rate, jump, correlation;
     MidiLearnSlider attack, decay, sustain, release;
     MidiLearnSlider seed, level;
 
@@ -482,6 +483,7 @@ private:
         ampMirrorAttachment, timeMirrorAttachment;
     std::unique_ptr<SliderAttachment> ampDistAttachment, timeDistAttachment,
         ampStepAttachment, timeStepAttachment, chaosAttachment,
+        boundaryAttachment, rateAttachment, jumpAttachment, correlationAttachment,
         breakpointsAttachment, pitchStabilityAttachment, curveAttachment;
     std::unique_ptr<SliderAttachment> attackAttachment, decayAttachment,
         sustainAttachment, releaseAttachment, seedAttachment, levelAttachment;

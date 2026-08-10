@@ -276,7 +276,7 @@ private:
     };
 
     static constexpr int maxVoices = 8;
-    static constexpr int midiLearnParameterCount = 18;
+    static constexpr int midiLearnParameterCount = 22;
     static constexpr int drumPresetIndex = 9;
     static const std::array<FactoryPreset, 10> factoryPresets;
     static const std::array<const char*, midiLearnParameterCount> midiLearnParameterIds;

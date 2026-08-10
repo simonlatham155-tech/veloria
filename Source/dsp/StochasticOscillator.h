@@ -74,6 +74,10 @@ public:
 
     void setAmplitudeStepScale(float value) noexcept { amplitudeStepScale = juce::jlimit(0.10f, 2.0f, value); }
     void setTimeStepScale(float value) noexcept { timeStepScale = juce::jlimit(0.10f, 2.0f, value); }
+    void setBoundaryDrive(float value) noexcept { boundaryDrive = juce::jlimit(0.0f, 1.0f, value); }
+    void setStochasticRate(float value) noexcept { stochasticRate = juce::jlimit(0.0f, 1.0f, value); }
+    void setJump(float value) noexcept { jump = juce::jlimit(0.0f, 1.0f, value); }
+    void setCorrelation(float value) noexcept { correlation = juce::jlimit(0.0f, 1.0f, value); }
     void setWalkOrder(int value) noexcept { walkOrder = juce::jlimit(1, 2, value); }
     void setOperatingModel(OperatingModel value) noexcept { operatingModel = value; }
 
@@ -180,7 +184,7 @@ public:
             if (segmentIndex + 1 >= count)
             {
                 segmentIndex = 0;
-                evolveField();
+                evolveFieldRateControlled();
             }
             else
             {
@@ -270,6 +274,8 @@ private:
             timeStepState[i] = 0.0f;
             amplitudeCascadeState[i] = 0.5f;
             timeCascadeState[i] = 0.5f;
+            amplitudeRandomMemory[i] = 0.0f;
+            timeRandomMemory[i] = 0.0f;
         }
 
         if (isBrownIdss())
@@ -277,6 +283,32 @@ private:
             amplitudes.front() = 0.0f;
             amplitudes[activeBreakpointCount - 1] = 0.0f;
         }
+    }
+
+    void evolveFieldRateControlled() noexcept
+    {
+        const auto rateCurve = stochasticRate * stochasticRate;
+        const auto passesExact = 1.0f + rateCurve * 7.0f;
+        const auto wholePasses = juce::jlimit(1, 8, static_cast<int>(std::floor(passesExact)));
+        for (int pass = 0; pass < wholePasses; ++pass)
+            evolveField();
+        if (wholePasses < 8 && random.nextFloat() < passesExact - static_cast<float>(wholePasses))
+            evolveField();
+    }
+
+    [[nodiscard]] float shapeStochasticRandom(float fresh, float& memory) noexcept
+    {
+        const auto rho = juce::jlimit(0.0f, 0.985f, correlation * 0.985f);
+        const auto freshGain = std::sqrt(juce::jmax(0.0f, 1.0f - rho * rho));
+        auto value = rho * memory + freshGain * fresh;
+        memory = value;
+        const auto jumpProbability = jump * jump * 0.28f;
+        if (jumpProbability > 0.0f && random.nextFloat() < jumpProbability)
+        {
+            const auto sign = random.nextBool() ? 1.0f : -1.0f;
+            value += sign * (0.75f + jump * 3.25f);
+        }
+        return value;
     }
 
     void evolveField() noexcept
@@ -300,18 +332,27 @@ private:
 
         const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
         const auto maximumDuration = 1.0f + timeMirror * 2.75f;
-        const auto ampRandom = distributedRandomMorph(amplitudeDistributionPosition, amplitudeWalk);
-        const auto timeRandom = distributedRandomMorph(timeDistributionPosition, timeWalk);
+        const auto ampFresh = distributedRandomMorph(amplitudeDistributionPosition, amplitudeWalk);
+        const auto timeFresh = distributedRandomMorph(timeDistributionPosition, timeWalk);
+        const auto ampRandom = shapeStochasticRandom(ampFresh, amplitudeRandomMemory[index]);
+        const auto timeRandom = shapeStochasticRandom(timeFresh, timeRandomMemory[index]);
+        const auto ampProximity = juce::jlimit(0.0f, 1.0f, std::abs(amplitudes[index]) / juce::jmax(0.05f, amplitudeMirror));
+        const auto timeCentre = 0.5f * (minimumDuration + maximumDuration);
+        const auto timeHalfSpan = juce::jmax(0.001f, 0.5f * (maximumDuration - minimumDuration));
+        const auto timeProximity = juce::jlimit(0.0f, 1.0f, std::abs(durations[index] - timeCentre) / timeHalfSpan);
+        const auto boundaryCurve = boundaryDrive * boundaryDrive;
+        const auto ampBoundaryBoost = 1.0f + boundaryCurve * 6.0f * ampProximity * ampProximity * ampProximity;
+        const auto timeBoundaryBoost = 1.0f + boundaryCurve * 6.0f * timeProximity * timeProximity * timeProximity;
 
         if (walkOrder == 1)
         {
             amplitudes[index] = reflect(
-                amplitudes[index] + ampRandom * maxAmpStep,
+                amplitudes[index] + ampRandom * maxAmpStep * ampBoundaryBoost,
                 -amplitudeMirror,
                 amplitudeMirror);
 
             durations[index] = reflect(
-                durations[index] + timeRandom * maxTimeStep,
+                durations[index] + timeRandom * maxTimeStep * timeBoundaryBoost,
                 minimumDuration,
                 maximumDuration);
         }
@@ -333,11 +374,11 @@ private:
             const auto localTimeStep = maxTimeStep * timeCascadeState[index];
 
             amplitudeStepState[index] = reflect(
-                amplitudeStepState[index] + ampRandom * localAmpStep * 0.35f,
+                amplitudeStepState[index] + ampRandom * localAmpStep * 0.35f * ampBoundaryBoost,
                 -localAmpStep,
                 localAmpStep);
             timeStepState[index] = reflect(
-                timeStepState[index] + timeRandom * localTimeStep * 0.35f,
+                timeStepState[index] + timeRandom * localTimeStep * 0.35f * timeBoundaryBoost,
                 -localTimeStep,
                 localTimeStep);
 
@@ -353,12 +394,12 @@ private:
         else
         {
             amplitudeStepState[index] = reflect(
-                amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f,
+                amplitudeStepState[index] + ampRandom * maxAmpStep * 0.35f * ampBoundaryBoost,
                 -maxAmpStep,
                 maxAmpStep);
 
             timeStepState[index] = reflect(
-                timeStepState[index] + timeRandom * maxTimeStep * 0.35f,
+                timeStepState[index] + timeRandom * maxTimeStep * 0.35f * timeBoundaryBoost,
                 -maxTimeStep,
                 maxTimeStep);
 
@@ -495,6 +536,8 @@ private:
     std::array<float, numBreakpoints> timeStepState {};
     std::array<float, numBreakpoints> amplitudeCascadeState {};
     std::array<float, numBreakpoints> timeCascadeState {};
+    std::array<float, numBreakpoints> amplitudeRandomMemory {};
+    std::array<float, numBreakpoints> timeRandomMemory {};
 
     juce::Random random { 1 };
     double sampleRate { 44100.0 };
@@ -509,6 +552,10 @@ private:
     float timeMirror { 0.45f };
     float amplitudeStepScale { 1.0f };
     float timeStepScale { 1.0f };
+    float boundaryDrive { 0.0f };
+    float stochasticRate { 0.0f };
+    float jump { 0.0f };
+    float correlation { 0.0f };
     float pitchStability { 1.0f };
     float interpolationShape { 0.0f };
     float amplitudeDistributionPosition { 0.0f };
