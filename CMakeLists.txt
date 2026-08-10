@@ -31,10 +31,22 @@ juce_add_plugin(Veloria
 
 juce_generate_juce_header(Veloria)
 
-# V1 build. No picture/image assets are embedded or displayed.
+# The supplied history artwork is embedded only for the WHAT IF? story.
+# It is not shown anywhere in the normal Veloria instrument interface.
+juce_add_binary_data(VeloriaAssets
+    SOURCES
+        assets/what_if_history.jpg
+)
+
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginProcessor.cpp" VELORIA_PROCESSOR_SOURCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp" VELORIA_EDITOR_SOURCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.h" VELORIA_EDITOR_HEADER)
+
+# Give the generated editor access to the embedded history JPEG.
+string(REPLACE
+    "#include <JuceHeader.h>"
+    "#include <JuceHeader.h>\n#include <BinaryData.h>"
+    VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
 # Musical CHAOS: each tonal voice is already tuned to the MIDI note that created
 # it. CHAOS must increase stochastic waveform movement without destabilising that
@@ -177,7 +189,8 @@ set(NEW_WORDMARK [[void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<f
 
 string(REPLACE "${OLD_WORDMARK}" "${NEW_WORDMARK}" VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
 
-# What If remains text/diagram based. No picture panel is shown.
+# WHAT IF? keeps the written history first. Remove the old top hero so nothing
+# flashes before the story begins.
 set(WHATIF_TOP_VISUAL [[                inner.removeFromTop(14.0f);
                 drawHeroIllustration(g, inner.removeFromTop(290.0f), panel, gold, purple, magenta, cyan);
                 inner.removeFromTop(24.0f);
@@ -185,8 +198,43 @@ set(WHATIF_TOP_VISUAL [[                inner.removeFromTop(14.0f);
 set(WHATIF_TOP_REPLACEMENT [[                inner.removeFromTop(14.0f);
 ]])
 string(REPLACE "${WHATIF_TOP_VISUAL}" "${WHATIF_TOP_REPLACEMENT}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
+
+# Put the supplied history artwork after every history/future text card and
+# immediately before the closing Veloria footer.
+set(WHATIF_FOOTER [[                auto footer = inner.removeFromTop(54.0f);
+]])
+set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
+                sectionLabel("THE EVOLUTION OF STOCHASTIC SYNTHESIS  //  THE HISTORY PICTURE", gold);
+                {
+                    static const auto historyImage = juce::ImageFileFormat::loadFrom(
+                        BinaryData::what_if_history_jpg,
+                        BinaryData::what_if_history_jpgSize);
+
+                    auto imageBand = inner.removeFromTop(1190.0f);
+                    auto picture = imageBand.withSizeKeepingCentre(820.0f, 1160.0f);
+                    g.setColour(panel.withAlpha(0.97f));
+                    g.fillRoundedRectangle(picture.expanded(10.0f), 10.0f);
+                    g.setColour(gold.withAlpha(0.30f));
+                    g.drawRoundedRectangle(picture.expanded(10.0f), 10.0f, 1.2f);
+
+                    if (historyImage.isValid())
+                    {
+                        g.drawImageWithin(historyImage,
+                                          (int) picture.getX(), (int) picture.getY(),
+                                          (int) picture.getWidth(), (int) picture.getHeight(),
+                                          juce::RectanglePlacement::centred,
+                                          false);
+                    }
+                }
+                inner.removeFromTop(28.0f);
+
+                auto footer = inner.removeFromTop(54.0f);
+]])
+string(REPLACE "${WHATIF_FOOTER}" "${WHATIF_BOTTOM_PICTURE}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
+
+# Extend the scroll document to include the full portrait history artwork.
 string(REPLACE "static constexpr float contentHeight = 1920.0f;"
-               "static constexpr float contentHeight = 1660.0f;"
+               "static constexpr float contentHeight = 2920.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Processor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
@@ -216,6 +264,7 @@ target_compile_definitions(Veloria
 
 target_link_libraries(Veloria
     PRIVATE
+        VeloriaAssets
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
