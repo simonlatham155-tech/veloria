@@ -9,6 +9,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-14
@@ -16,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: agent/vst3-test-build
 
       # The GitHub connector stores the supplied high-resolution JPEG losslessly
       # as base64 text. Recreate the actual JPEG before CMake/JUCE embeds it so
@@ -32,8 +37,18 @@ jobs:
           test "$WIDTH" = "1055"
           test "$HEIGHT" = "1491"
 
-      - name: Apply extended stochastic controls
-        run: python3 tools/apply_extended_stochastic_controls.py
+      - name: Integrate extended stochastic controls into source
+        run: |
+          if grep -q "setBoundaryDrive" Source/dsp/StochasticOscillator.h; then
+            echo "Extended stochastic controls already integrated in source"
+          else
+            python3 tools/apply_extended_stochastic_controls.py
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Source/PluginProcessor.cpp Source/PluginProcessor.h Source/PluginEditor.cpp Source/PluginEditor.h Source/dsp/StochasticOscillator.h
+            git commit -m "Integrate Boundary Rate Jump Correlation controls"
+            git push origin HEAD:agent/vst3-test-build
+          fi
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
