@@ -281,6 +281,25 @@ string(REPLACE "static constexpr float contentHeight = 1920.0f;"
                "static constexpr float contentHeight = 3370.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
+# The old editor paint path used to draw a separate WHAT IF overlay immediately,
+# then the RevisedWhatIfOverlay component appeared on its timer. That is the image
+# flash seen before the text page. Disable the old renderer completely.
+string(REPLACE
+    "if(whatIfOpen){drawWhatIfOverlay(g);return;}"
+    "if(whatIfOpen){return;}"
+    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+
+# Put the revised overlay in the component hierarchy from construction time and
+# switch it synchronously when WHAT IF is pressed, rather than waiting for its timer.
+string(REPLACE
+    "visualState=audioProcessor.getVisualState(); startTimerHz(30);"
+    "addAndMakeVisible(revisedWhatIfOverlay); revisedWhatIfOverlay.setVisible(false); visualState=audioProcessor.getVisualState(); startTimerHz(30);"
+    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+string(REPLACE
+    "c->setVisible(!whatIfOpen); repaint();"
+    "c->setVisible(!whatIfOpen); revisedWhatIfOverlay.setVisible(whatIfOpen); if(whatIfOpen) revisedWhatIfOverlay.toFront(false); repaint();"
+    VELORIA_EDITOR_SOURCE "${VELORIA_EDITOR_SOURCE}")
+
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Processor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Editor.cpp" "${VELORIA_EDITOR_SOURCE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PluginEditor.h" "${VELORIA_EDITOR_HEADER}")
