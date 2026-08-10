@@ -48,22 +48,14 @@ string(REPLACE
     "#include <JuceHeader.h>\n#include <BinaryData.h>"
     VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
-# Musical CHAOS: each tonal voice is already tuned to the MIDI note that created
-# it. CHAOS must increase stochastic waveform movement without destabilising that
-# musical anchor. As CHAOS rises, pitch stability is therefore pulled TOWARD the
-# entered note rather than away from it. In a chord, each voice independently
-# remains anchored to its own MIDI note, preserving the played harmony.
+# CHAOS is a stochastic-intensity macro, not a pitch control. Each tonal voice is
+# already created from its MIDI note. CHAOS may increase amplitude/time movement
+# and step depth, but it must never move PITCH LOCK underneath the performer.
+# Leaving pitchStability independent removes the audible pitch/key-range stepping
+# that occurred when CHAOS was previously coupled to pitch anchoring.
 string(REPLACE
     "const auto effectivePitchStability = juce::jlimit(0.0f, 1.0f, pitchStability * (1.0f - chaosSquared * 0.58f));"
-    "const auto effectivePitchStability = juce::jlimit(0.0f, 1.0f, pitchStability + (1.0f - pitchStability) * chaosSquared * 0.92f);"
-    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
-
-# Aftertouch may still add expression, but at high CHAOS it must not undo the
-# musical pitch anchor. The pressure-induced pitch release therefore fades away
-# as CHAOS rises while amplitude/time stochastic expression remains available.
-string(REPLACE
-    "const auto expressivePitchLock = juce::jlimit(0.0f, 1.0f, effectivePitchStability * (1.0f - expression * 0.16f));"
-    "const auto expressionPitchRelease = 0.16f * (1.0f - chaos * 0.85f);\n        const auto expressivePitchLock = juce::jlimit(0.0f, 1.0f, effectivePitchStability * (1.0f - expression * expressionPitchRelease));"
+    "const auto effectivePitchStability = pitchStability;"
     VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
 
 # Replace only the VELORIA wordmark. LATHAMAUDIO and the rest of the header remain untouched.
@@ -200,7 +192,8 @@ set(WHATIF_TOP_REPLACEMENT [[                inner.removeFromTop(14.0f);
 string(REPLACE "${WHATIF_TOP_VISUAL}" "${WHATIF_TOP_REPLACEMENT}" VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
 # Put the supplied history artwork after every history/future text card and
-# immediately before the closing Veloria footer.
+# immediately before the closing Veloria footer. Render close to native pixel
+# dimensions and explicitly use JUCE high-quality image resampling.
 set(WHATIF_FOOTER [[                auto footer = inner.removeFromTop(54.0f);
 ]])
 set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
@@ -210,8 +203,8 @@ set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
                         BinaryData::what_if_history_jpg,
                         BinaryData::what_if_history_jpgSize);
 
-                    auto imageBand = inner.removeFromTop(1190.0f);
-                    auto picture = imageBand.withSizeKeepingCentre(820.0f, 1160.0f);
+                    auto imageBand = inner.removeFromTop(1310.0f);
+                    auto picture = imageBand.withSizeKeepingCentre(900.0f, 1272.0f);
                     g.setColour(panel.withAlpha(0.97f));
                     g.fillRoundedRectangle(picture.expanded(10.0f), 10.0f);
                     g.setColour(gold.withAlpha(0.30f));
@@ -219,6 +212,8 @@ set(WHATIF_BOTTOM_PICTURE [[                inner.removeFromTop(26.0f);
 
                     if (historyImage.isValid())
                     {
+                        juce::Graphics::ScopedSaveState imageState(g);
+                        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
                         g.drawImageWithin(historyImage,
                                           (int) picture.getX(), (int) picture.getY(),
                                           (int) picture.getWidth(), (int) picture.getHeight(),
@@ -234,7 +229,7 @@ string(REPLACE "${WHATIF_FOOTER}" "${WHATIF_BOTTOM_PICTURE}" VELORIA_EDITOR_HEAD
 
 # Extend the scroll document to include the full portrait history artwork.
 string(REPLACE "static constexpr float contentHeight = 1920.0f;"
-               "static constexpr float contentHeight = 2920.0f;"
+               "static constexpr float contentHeight = 3050.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Processor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
