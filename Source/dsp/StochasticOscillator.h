@@ -50,17 +50,58 @@ public:
     void setTimeWalk(float value) noexcept { timeWalk = juce::jlimit(0.0f, 1.0f, value); }
     void setAmplitudeMirror(float value) noexcept { amplitudeMirror = juce::jlimit(0.05f, 1.0f, value); }
     void setTimeMirror(float value) noexcept { timeMirror = juce::jlimit(0.05f, 1.0f, value); }
-    void setAmplitudeDistribution(Distribution value) noexcept { amplitudeDistribution = value; }
-    void setTimeDistribution(Distribution value) noexcept { timeDistribution = value; }
+
+    void setAmplitudeDistribution(Distribution value) noexcept
+    {
+        amplitudeDistributionPosition = static_cast<float>(static_cast<int>(value));
+    }
+
+    void setTimeDistribution(Distribution value) noexcept
+    {
+        timeDistributionPosition = static_cast<float>(static_cast<int>(value));
+    }
+
+    // Continuous 0..5 morph across the six genuine stochastic distributions.
+    void setAmplitudeDistributionMorph(float value) noexcept
+    {
+        amplitudeDistributionPosition = juce::jlimit(0.0f, 5.0f, value);
+    }
+
+    void setTimeDistributionMorph(float value) noexcept
+    {
+        timeDistributionPosition = juce::jlimit(0.0f, 5.0f, value);
+    }
+
     void setAmplitudeStepScale(float value) noexcept { amplitudeStepScale = juce::jlimit(0.10f, 2.0f, value); }
     void setTimeStepScale(float value) noexcept { timeStepScale = juce::jlimit(0.10f, 2.0f, value); }
     void setWalkOrder(int value) noexcept { walkOrder = juce::jlimit(1, 2, value); }
     void setOperatingModel(OperatingModel value) noexcept { operatingModel = value; }
-    void setActiveBreakpointCount(int value) noexcept
+
+    // POINTS is continuous to the performer. Between N and N+1, the new final
+    // breakpoint grows smoothly out of the closing segment rather than appearing
+    // suddenly. At integer values the topology is exactly the historical N-point field.
+    void setActiveBreakpointCount(float value) noexcept
     {
-        activeBreakpointCount = static_cast<std::size_t>(juce::jlimit(4, static_cast<int>(numBreakpoints), value));
+        const auto position = juce::jlimit(4.0f, static_cast<float>(numBreakpoints), value);
+        const auto lower = juce::jlimit(4, static_cast<int>(numBreakpoints), static_cast<int>(std::floor(position)));
+        const auto fraction = position - static_cast<float>(lower);
+
+        if (fraction <= 1.0e-5f || lower >= static_cast<int>(numBreakpoints))
+        {
+            activeBreakpointCount = static_cast<std::size_t>(lower);
+            breakpointMorph = 1.0f;
+        }
+        else
+        {
+            activeBreakpointCount = static_cast<std::size_t>(lower + 1);
+            breakpointMorph = juce::jlimit(0.0f, 1.0f, fraction);
+        }
+
         if (segmentIndex >= activeBreakpointCount)
+        {
             segmentIndex = 0;
+            segmentPhase = 0.0;
+        }
 
         if (isBrownIdss())
         {
@@ -68,6 +109,7 @@ public:
             amplitudes[activeBreakpointCount - 1] = 0.0f;
         }
     }
+
     void setPitchStability(float value) noexcept { pitchStability = juce::jlimit(0.0f, 1.0f, value); }
     void setInterpolationShape(float value) noexcept { interpolationShape = juce::jlimit(0.0f, 1.0f, value); }
 
@@ -84,6 +126,13 @@ public:
     {
         amplitudeOut = amplitudes;
         durationOut = durations;
+
+        if (activeBreakpointCount > 0 && breakpointMorph < 1.0f)
+        {
+            const auto last = activeBreakpointCount - 1;
+            amplitudeOut[last] = amplitudeForIndex(last);
+            durationOut[last] = durationForIndex(last);
+        }
     }
 
     [[nodiscard]] float processSample() noexcept
@@ -95,18 +144,15 @@ public:
         const auto nextIndex = (segmentIndex + 1) % count;
         const auto rawT = juce::jlimit(0.0f, 1.0f, static_cast<float>(segmentPhase));
         const auto t = interpolationFor(rawT);
-        const auto output = amplitudes[segmentIndex]
-                          + (amplitudes[nextIndex] - amplitudes[segmentIndex]) * t;
+        const auto currentAmplitude = amplitudeForIndex(segmentIndex);
+        const auto nextAmplitude = amplitudeForIndex(nextIndex);
+        const auto output = currentAmplitude + (nextAmplitude - currentAmplitude) * t;
 
         const auto totalDuration = durationSum();
         const auto driftRatio = static_cast<float>(count) / juce::jmax(0.001f, totalDuration);
         const auto pitchRatio = juce::jmap(pitchStability, driftRatio, 1.0f);
         auto remainingCycleTime = static_cast<double>(frequency * pitchRatio) / sampleRate;
 
-        // Advance using cycle-time rather than repeatedly rescaling a segment-phase
-        // remainder. Each crossed segment consumes a strictly positive amount of
-        // cycle time, so stochastic duration changes can never make the remainder
-        // grow and lock the real-time audio thread.
         constexpr int maxSegmentCrossingsPerSample = 64;
         for (int crossing = 0;
              crossing < maxSegmentCrossingsPerSample && remainingCycleTime > 0.0;
@@ -115,7 +161,7 @@ public:
             const auto refreshedTotal = durationSum();
             const auto segmentDuration = juce::jmax(
                 1.0e-8,
-                static_cast<double>(durations[segmentIndex])
+                static_cast<double>(durationForIndex(segmentIndex))
                     / juce::jmax(0.001, static_cast<double>(refreshedTotal)));
             const auto remainingInSegment = juce::jmax(
                 0.0,
@@ -142,9 +188,6 @@ public:
             }
         }
 
-        // Safety guard for malformed host/sample-rate states. Under the normal
-        // 20 Hz-18 kHz operating range the traversal above finishes far below 64
-        // crossings, but no oscillator state is allowed to monopolise the audio thread.
         if (! std::isfinite(segmentPhase) || remainingCycleTime > 0.0)
             segmentPhase = 0.0;
 
@@ -155,6 +198,20 @@ private:
     [[nodiscard]] bool isBrownIdss() const noexcept
     {
         return operatingModel == OperatingModel::brownIdss;
+    }
+
+    [[nodiscard]] static Distribution distributionForIndex(int index) noexcept
+    {
+        switch (juce::jlimit(0, 5, index))
+        {
+            case 1: return Distribution::uniform;
+            case 2: return Distribution::gaussian;
+            case 3: return Distribution::logistic;
+            case 4: return Distribution::cauchy;
+            case 5: return Distribution::arcsine;
+            case 0:
+            default: return Distribution::adaptive;
+        }
     }
 
     [[nodiscard]] float interpolationFor(float rawT) const noexcept
@@ -170,6 +227,34 @@ private:
         if (interpolationShape <= 0.5f)
             return juce::jmap(interpolationShape * 2.0f, rawT, cosineT);
         return juce::jmap((interpolationShape - 0.5f) * 2.0f, cosineT, squareT);
+    }
+
+    [[nodiscard]] float amplitudeForIndex(std::size_t index) const noexcept
+    {
+        if (activeBreakpointCount > 0
+            && breakpointMorph < 1.0f
+            && index + 1 == activeBreakpointCount)
+        {
+            // At the start of a POINTS transition the new point lies exactly on
+            // the closing target (point zero), then acquires its own stochastic
+            // amplitude continuously as the knob approaches the next integer.
+            return juce::jmap(breakpointMorph, amplitudes.front(), amplitudes[index]);
+        }
+        return amplitudes[index];
+    }
+
+    [[nodiscard]] float durationForIndex(std::size_t index) const noexcept
+    {
+        const auto raw = std::isfinite(durations[index]) ? durations[index] : 1.0f;
+        if (activeBreakpointCount > 0
+            && breakpointMorph < 1.0f
+            && index + 1 == activeBreakpointCount)
+        {
+            // The extra closing segment grows from virtually zero duration to its
+            // full stochastic duration, avoiding the hard topology jump N -> N+1.
+            return juce::jmax(1.0e-5f, raw * breakpointMorph);
+        }
+        return raw;
     }
 
     void initialiseState() noexcept
@@ -215,8 +300,8 @@ private:
 
         const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
         const auto maximumDuration = 1.0f + timeMirror * 2.75f;
-        const auto ampRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
-        const auto timeRandom = distributedRandom(timeDistribution, timeWalk);
+        const auto ampRandom = distributedRandomMorph(amplitudeDistributionPosition, amplitudeWalk);
+        const auto timeRandom = distributedRandomMorph(timeDistributionPosition, timeWalk);
 
         if (walkOrder == 1)
         {
@@ -232,8 +317,8 @@ private:
         }
         else if (isBrownIdss())
         {
-            const auto ampRangeRandom = distributedRandom(amplitudeDistribution, amplitudeWalk);
-            const auto timeRangeRandom = distributedRandom(timeDistribution, timeWalk);
+            const auto ampRangeRandom = distributedRandomMorph(amplitudeDistributionPosition, amplitudeWalk);
+            const auto timeRangeRandom = distributedRandomMorph(timeDistributionPosition, timeWalk);
 
             amplitudeCascadeState[index] = reflect(
                 amplitudeCascadeState[index] + ampRangeRandom * (0.035f + ampWalkControl * 0.20f),
@@ -309,7 +394,7 @@ private:
     {
         float total = 0.0f;
         for (std::size_t i = 0; i < activeBreakpointCount; ++i)
-            total += std::isfinite(durations[i]) ? durations[i] : 1.0f;
+            total += durationForIndex(i);
         return juce::jmax(0.001f, total);
     }
 
@@ -344,6 +429,21 @@ private:
     {
         const auto u = random.nextFloat();
         return std::sin(juce::MathConstants<float>::pi * (u - 0.5f));
+    }
+
+    [[nodiscard]] float distributedRandomMorph(float position, float walkEnergy) noexcept
+    {
+        const auto p = juce::jlimit(0.0f, 5.0f, position);
+        const auto lowerIndex = juce::jlimit(0, 5, static_cast<int>(std::floor(p)));
+        const auto upperIndex = juce::jmin(5, lowerIndex + 1);
+        const auto blend = p - static_cast<float>(lowerIndex);
+
+        const auto a = distributedRandom(distributionForIndex(lowerIndex), walkEnergy);
+        if (upperIndex == lowerIndex || blend <= 1.0e-6f)
+            return a;
+
+        const auto b = distributedRandom(distributionForIndex(upperIndex), walkEnergy);
+        return a + (b - a) * blend;
     }
 
     [[nodiscard]] float distributedRandom(Distribution distribution, float walkEnergy) noexcept
@@ -411,9 +511,10 @@ private:
     float timeStepScale { 1.0f };
     float pitchStability { 1.0f };
     float interpolationShape { 0.0f };
+    float amplitudeDistributionPosition { 0.0f };
+    float timeDistributionPosition { 0.0f };
+    float breakpointMorph { 1.0f };
     int walkOrder { 2 };
-    Distribution amplitudeDistribution { Distribution::adaptive };
-    Distribution timeDistribution { Distribution::adaptive };
     OperatingModel operatingModel { OperatingModel::veloria };
     std::uint32_t seed { 1u };
 };
