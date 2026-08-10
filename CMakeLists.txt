@@ -31,9 +31,28 @@ juce_add_plugin(Veloria
 
 juce_generate_juce_header(Veloria)
 
-# V1 editor build. No picture/image assets are embedded or displayed.
+# V1 build. No picture/image assets are embedded or displayed.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginProcessor.cpp" VELORIA_PROCESSOR_SOURCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.cpp" VELORIA_EDITOR_SOURCE)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Source/PluginEditor.h" VELORIA_EDITOR_HEADER)
+
+# Musical CHAOS: each tonal voice is already tuned to the MIDI note that created
+# it. CHAOS must increase stochastic waveform movement without destabilising that
+# musical anchor. As CHAOS rises, pitch stability is therefore pulled TOWARD the
+# entered note rather than away from it. In a chord, each voice independently
+# remains anchored to its own MIDI note, preserving the played harmony.
+string(REPLACE
+    "const auto effectivePitchStability = juce::jlimit(0.0f, 1.0f, pitchStability * (1.0f - chaosSquared * 0.58f));"
+    "const auto effectivePitchStability = juce::jlimit(0.0f, 1.0f, pitchStability + (1.0f - pitchStability) * chaosSquared * 0.92f);"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
+
+# Aftertouch may still add expression, but at high CHAOS it must not undo the
+# musical pitch anchor. The pressure-induced pitch release therefore fades away
+# as CHAOS rises while amplitude/time stochastic expression remains available.
+string(REPLACE
+    "const auto expressivePitchLock = juce::jlimit(0.0f, 1.0f, effectivePitchStability * (1.0f - expression * 0.16f));"
+    "const auto expressionPitchRelease = 0.16f * (1.0f - chaos * 0.85f);\n        const auto expressivePitchLock = juce::jlimit(0.0f, 1.0f, effectivePitchStability * (1.0f - expression * expressionPitchRelease));"
+    VELORIA_PROCESSOR_SOURCE "${VELORIA_PROCESSOR_SOURCE}")
 
 # Replace only the VELORIA wordmark. LATHAMAUDIO and the rest of the header remain untouched.
 set(OLD_WORDMARK [[void drawVeloriaWordmark(juce::Graphics& g, juce::Rectangle<float> area)
@@ -170,12 +189,13 @@ string(REPLACE "static constexpr float contentHeight = 1920.0f;"
                "static constexpr float contentHeight = 1660.0f;"
                VELORIA_EDITOR_HEADER "${VELORIA_EDITOR_HEADER}")
 
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Processor.cpp" "${VELORIA_PROCESSOR_SOURCE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Editor.cpp" "${VELORIA_EDITOR_SOURCE}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PluginEditor.h" "${VELORIA_EDITOR_HEADER}")
 
 target_sources(Veloria
     PRIVATE
-        Source/PluginProcessor.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Processor.cpp"
         Source/PluginProcessor.h
         "${CMAKE_CURRENT_BINARY_DIR}/VeloriaV1Editor.cpp"
         "${CMAKE_CURRENT_BINARY_DIR}/PluginEditor.h"
