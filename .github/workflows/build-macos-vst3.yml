@@ -17,6 +17,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The GitHub connector stores the supplied high-resolution JPEG losslessly
+      # as base64 text. Recreate the actual JPEG before CMake/JUCE embeds it so
+      # BinaryData contains the 1055x1491 artwork, not the old thumbnail asset.
+      - name: Restore high-resolution WHAT IF artwork
+        run: |
+          /usr/bin/openssl base64 -d -A \
+            -in assets/what_if_history.b64.part00 \
+            -out assets/what_if_history.jpg
+          test -s assets/what_if_history.jpg
+          WIDTH=$(sips -g pixelWidth assets/what_if_history.jpg | awk '/pixelWidth/ {print $2}')
+          HEIGHT=$(sips -g pixelHeight assets/what_if_history.jpg | awk '/pixelHeight/ {print $2}')
+          echo "WHAT IF artwork: ${WIDTH}x${HEIGHT}"
+          test "$WIDTH" = "1055"
+          test "$HEIGHT" = "1491"
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
