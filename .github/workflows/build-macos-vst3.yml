@@ -32,6 +32,9 @@ jobs:
           test "$WIDTH" = "1055"
           test "$HEIGHT" = "1491"
 
+      - name: Apply extended stochastic controls
+        run: python3 tools/apply_extended_stochastic_controls.py
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
