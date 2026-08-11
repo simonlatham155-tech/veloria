@@ -50,6 +50,19 @@ jobs:
             git push origin HEAD:agent/vst3-test-build
           fi
 
+      - name: Apply reference-inspired compact UI layout
+        run: |
+          if grep -q 'drawPanel(g,{14,74,430,786}' Source/PluginEditor.cpp; then
+            echo "Compact UI layout already integrated in source"
+          else
+            python3 tools/apply_reference_layout.py
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Source/PluginEditor.cpp
+            git commit -m "Rework Veloria layout and compact ADSR"
+            git push origin HEAD:agent/vst3-test-build
+          fi
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
