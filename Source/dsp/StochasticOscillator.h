@@ -239,9 +239,6 @@ private:
             && breakpointMorph < 1.0f
             && index + 1 == activeBreakpointCount)
         {
-            // At the start of a POINTS transition the new point lies exactly on
-            // the closing target (point zero), then acquires its own stochastic
-            // amplitude continuously as the knob approaches the next integer.
             return juce::jmap(breakpointMorph, amplitudes.front(), amplitudes[index]);
         }
         return amplitudes[index];
@@ -254,8 +251,6 @@ private:
             && breakpointMorph < 1.0f
             && index + 1 == activeBreakpointCount)
         {
-            // The extra closing segment grows from virtually zero duration to its
-            // full stochastic duration, avoiding the hard topology jump N -> N+1.
             return juce::jmax(1.0e-5f, raw * breakpointMorph);
         }
         return raw;
@@ -287,26 +282,39 @@ private:
 
     void evolveFieldRateControlled() noexcept
     {
+        // Keep the lower/middle range playable, but let the final third cross into
+        // a visibly different regime. Full RATE now performs up to 32 complete
+        // stochastic field evolutions per oscillator cycle instead of eight.
         const auto rateCurve = stochasticRate * stochasticRate;
-        const auto passesExact = 1.0f + rateCurve * 7.0f;
-        const auto wholePasses = juce::jlimit(1, 8, static_cast<int>(std::floor(passesExact)));
+        const auto extreme = rateCurve * rateCurve;
+        const auto passesExact = 1.0f + rateCurve * 7.0f + extreme * 24.0f;
+        const auto wholePasses = juce::jlimit(1, 32, static_cast<int>(std::floor(passesExact)));
         for (int pass = 0; pass < wholePasses; ++pass)
             evolveField();
-        if (wholePasses < 8 && random.nextFloat() < passesExact - static_cast<float>(wholePasses))
+        if (wholePasses < 32 && random.nextFloat() < passesExact - static_cast<float>(wholePasses))
             evolveField();
     }
 
     [[nodiscard]] float shapeStochasticRandom(float fresh, float& memory) noexcept
     {
-        const auto rho = juce::jlimit(0.0f, 0.985f, correlation * 0.985f);
+        // CORRELATION uses a smooth control law but approaches almost complete
+        // persistence at maximum, making long coherent stochastic runs obvious.
+        const auto c = juce::jlimit(0.0f, 1.0f, correlation);
+        const auto correlationCurve = c * c * (3.0f - 2.0f * c);
+        const auto rho = juce::jlimit(0.0f, 0.9995f, correlationCurve * 0.9995f);
         const auto freshGain = std::sqrt(juce::jmax(0.0f, 1.0f - rho * rho));
         auto value = rho * memory + freshGain * fresh;
         memory = value;
-        const auto jumpProbability = jump * jump * 0.28f;
+
+        // JUMP now becomes a true heavy-excursion control in its upper range.
+        // At maximum roughly two thirds of updates can receive a large signed
+        // impulse, with enough energy to traverse and reflect across boundaries.
+        const auto jumpProbability = std::pow(jump, 1.35f) * 0.66f;
         if (jumpProbability > 0.0f && random.nextFloat() < jumpProbability)
         {
             const auto sign = random.nextBool() ? 1.0f : -1.0f;
-            value += sign * (0.75f + jump * 3.25f);
+            const auto jumpMagnitude = 0.85f + jump * 7.15f;
+            value += sign * jumpMagnitude;
         }
         return value;
     }
@@ -327,8 +335,17 @@ private:
     {
         const auto ampWalkControl = isBrownIdss() ? std::pow(amplitudeWalk, 2.15f) : amplitudeWalk;
         const auto timeWalkControl = isBrownIdss() ? std::pow(timeWalk, 2.35f) : timeWalk;
-        const auto maxAmpStep = juce::jmap(ampWalkControl, 0.0002f, 0.24f) * amplitudeStepScale;
-        const auto maxTimeStep = juce::jmap(timeWalkControl, 0.0002f, 0.20f) * timeStepScale;
+
+        // Preserve the existing response around normal settings, but add a steep
+        // stochastic 'danger zone' near the top of WALK and STEP controls.
+        const auto ampWalkExtreme = std::pow(ampWalkControl, 4.0f);
+        const auto timeWalkExtreme = std::pow(timeWalkControl, 4.0f);
+        const auto ampStepOver = juce::jmax(0.0f, amplitudeStepScale - 1.0f);
+        const auto timeStepOver = juce::jmax(0.0f, timeStepScale - 1.0f);
+        const auto effectiveAmpStepScale = amplitudeStepScale * (1.0f + ampStepOver * ampStepOver * 0.75f);
+        const auto effectiveTimeStepScale = timeStepScale * (1.0f + timeStepOver * timeStepOver * 0.75f);
+        const auto maxAmpStep = (0.0002f + ampWalkControl * 0.24f + ampWalkExtreme * 0.36f) * effectiveAmpStepScale;
+        const auto maxTimeStep = (0.0002f + timeWalkControl * 0.20f + timeWalkExtreme * 0.30f) * effectiveTimeStepScale;
 
         const auto minimumDuration = juce::jmax(0.02f, 1.0f - timeMirror * 0.92f);
         const auto maximumDuration = 1.0f + timeMirror * 2.75f;
@@ -340,9 +357,15 @@ private:
         const auto timeCentre = 0.5f * (minimumDuration + maximumDuration);
         const auto timeHalfSpan = juce::jmax(0.001f, 0.5f * (maximumDuration - minimumDuration));
         const auto timeProximity = juce::jlimit(0.0f, 1.0f, std::abs(durations[index] - timeCentre) / timeHalfSpan);
+
+        // BOUNDARY is deliberately not a subtle macro. Near the upper end it
+        // accelerates steps as the walk approaches a wall, creating repeated
+        // overshoot/reflection collisions and the tearing behaviour we wanted.
         const auto boundaryCurve = boundaryDrive * boundaryDrive;
-        const auto ampBoundaryBoost = 1.0f + boundaryCurve * 6.0f * ampProximity * ampProximity * ampProximity;
-        const auto timeBoundaryBoost = 1.0f + boundaryCurve * 6.0f * timeProximity * timeProximity * timeProximity;
+        const auto ampBoundaryZone = std::pow(ampProximity, 1.5f);
+        const auto timeBoundaryZone = std::pow(timeProximity, 1.5f);
+        const auto ampBoundaryBoost = 1.0f + boundaryCurve * 24.0f * ampBoundaryZone;
+        const auto timeBoundaryBoost = 1.0f + boundaryCurve * 24.0f * timeBoundaryZone;
 
         if (walkOrder == 1)
         {
