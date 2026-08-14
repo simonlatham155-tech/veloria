@@ -1,0 +1,38 @@
+name: Fix engine layout
+
+on:
+  push:
+    branches:
+      - agent/vst3-test-build
+    paths:
+      - .github/workflows/fix-engine-layout.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/vst3-test-build
+      - name: Move engine control next to order button
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Source/PluginEditor.h')
+          text = path.read_text()
+          old = 'setBounds(103, 654, 215, 20);'
+          new = 'setBounds(120, 706, 198, 22);'
+          if old not in text:
+              raise SystemExit('Expected engine bounds not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit layout fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Source/PluginEditor.h
+          git commit -m 'Place engine control beside order button'
+          git push origin HEAD:agent/vst3-test-build
