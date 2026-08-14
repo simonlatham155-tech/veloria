@@ -62,7 +62,7 @@ private:
             if (getParentComponent() == nullptr)
                 editor.addAndMakeVisible(*this);
 
-            setBounds(103, 654, 215, 20);
+            setBounds(120, 706, 198, 22);
             setVisible(! editor.whatIfOpen);
             updateAppearance();
         }
