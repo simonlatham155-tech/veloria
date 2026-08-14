@@ -139,7 +139,10 @@ VeloriaAudioProcessorEditor::VeloriaAudioProcessorEditor(VeloriaAudioProcessor& 
     presetNameEditor.setTextToShowWhenEmpty("Name preset...",juce::Colours::white.withAlpha(0.28f)); presetNameEditor.setColour(juce::TextEditor::backgroundColourId,panel2); presetNameEditor.setColour(juce::TextEditor::textColourId,juce::Colours::white); addAndMakeVisible(presetNameEditor);
     savePresetButton.onClick=[this]{if(audioProcessor.saveUserPreset(presetNameEditor.getText().trim()))refreshPresetBox(presetNameEditor.getText().trim());}; renamePresetButton.onClick=[this]{if(selectedPresetIsUser()&&audioProcessor.renameUserPreset(presetBox.getText(),presetNameEditor.getText().trim()))refreshPresetBox(presetNameEditor.getText().trim());}; deletePresetButton.onClick=[this]{if(selectedPresetIsUser()&&audioProcessor.deleteUserPreset(presetBox.getText()))refreshPresetBox();};
     for(auto* l:{&fieldStatus,&voiceStatus,&presetStatus,&footerStatus})addAndMakeVisible(l);
-    voiceStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.62f)); fieldStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.55f)); presetStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.40f)); footerStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.25f)); footerStatus.setText("LIVE STOCHASTIC PLANET  //  BREAKPOINT GEOMETRY  //  ORBITS  //  DURATION FIELD  //  STORMS",juce::dontSendNotification); footerStatus.setJustificationType(juce::Justification::centred);
+    voiceStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.72f)); voiceStatus.setFont(juce::FontOptions(11.0f,juce::Font::bold)); voiceStatus.setJustificationType(juce::Justification::centredLeft);
+    fieldStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.55f)); fieldStatus.setFont(juce::FontOptions(9.5f,juce::Font::bold)); fieldStatus.setJustificationType(juce::Justification::centredLeft);
+    presetStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.40f)); presetStatus.setFont(juce::FontOptions(8.5f));
+    footerStatus.setColour(juce::Label::textColourId,juce::Colours::white.withAlpha(0.25f)); footerStatus.setText("LIVE STOCHASTIC PLANET  //  BREAKPOINT GEOMETRY  //  ORBITS  //  DURATION FIELD  //  STORMS",juce::dontSendNotification); footerStatus.setJustificationType(juce::Justification::centred);
     visualState=audioProcessor.getVisualState(); startTimerHz(30);
 }
 
@@ -196,7 +199,17 @@ void VeloriaAudioProcessorEditor::paint(juce::Graphics& g)
     const juce::Font brandLight(juce::FontOptions(18.0f));const juce::Font brandBold(juce::FontOptions(18.0f,juce::Font::bold));g.setColour(juce::Colours::white.withAlpha(0.80f));g.setFont(brandLight);g.drawText("LATHAM",22,14,70,26,juce::Justification::centredLeft);g.setFont(brandBold);g.drawText("AUDIO",86,14,72,26,juce::Justification::centredLeft);drawVeloriaWordmark(g,{520,9,360,31});
     if(whatIfOpen){drawWhatIfOverlay(g);return;}
     drawPanel(g,{14,74,330,556},"STOCHASTIC FIELD / PERFORMANCE");drawPanel(g,{354,74,774,556},"LIVING PLANET / LIVE MATHEMATICAL STATE");drawPanel(g,{1138,74,248,268},"EVOLUTION / STRUCTURE");drawPanel(g,{1138,352,248,278},"VOICE / PROBABILITY STATE");drawPanel(g,{14,640,500,220},audioProcessor.isDrumMode()?"PERCUSSION ENVELOPE / INTERNAL":"AMPLITUDE ENVELOPE");drawPanel(g,{524,640,610,220},"PRESETS / FIELD MEMORY");drawPanel(g,{1144,640,242,220},"OUTPUT");drawStochasticGlobe(g,{370,92,742,520});drawEvolutionGraph(g,{1156,116,212,142});
-    const auto bp=(int)parameterValue(audioProcessor.parameters,"breakpoints"),order=(int)parameterValue(audioProcessor.parameters,"walkOrder");const auto lock=parameterValue(audioProcessor.parameters,"pitchStability"),chaosValue=parameterValue(audioProcessor.parameters,"chaos");g.setColour(cyan.withAlpha(0.65f));g.setFont(9);g.drawText("BREAKPOINTS  "+juce::String(bp),1156,424,210,18,juce::Justification::centredLeft);g.drawText("WALK ORDER   "+juce::String(order),1156,450,210,18,juce::Justification::centredLeft);g.drawText("PITCH LOCK   "+juce::String(lock*100,0)+"%",1156,476,210,18,juce::Justification::centredLeft);g.setColour(gold.withAlpha(0.72f));g.drawText("CHAOS        "+juce::String(chaosValue*100,0)+"%",1156,502,210,18,juce::Justification::centredLeft);
+
+    const auto bp=(int)parameterValue(audioProcessor.parameters,"breakpoints"),order=(int)parameterValue(audioProcessor.parameters,"walkOrder");
+    const auto lock=parameterValue(audioProcessor.parameters,"pitchStability"),chaosValue=parameterValue(audioProcessor.parameters,"chaos");
+    constexpr int labelX=1156, valueX=1290, rowW=126, valueW=72, rowH=18;
+    g.setFont(juce::FontOptions(9.0f,juce::Font::bold));
+    g.setColour(cyan.withAlpha(0.65f));
+    g.drawText("BREAKPOINTS",labelX,438,rowW,rowH,juce::Justification::centredLeft);g.drawText(juce::String(bp),valueX,438,valueW,rowH,juce::Justification::centredRight);
+    g.drawText("WALK ORDER",labelX,464,rowW,rowH,juce::Justification::centredLeft);g.drawText(juce::String(order),valueX,464,valueW,rowH,juce::Justification::centredRight);
+    g.drawText("PITCH LOCK",labelX,490,rowW,rowH,juce::Justification::centredLeft);g.drawText(juce::String(lock*100,0)+"%",valueX,490,valueW,rowH,juce::Justification::centredRight);
+    g.setColour(gold.withAlpha(0.72f));
+    g.drawText("CHAOS",labelX,516,rowW,rowH,juce::Justification::centredLeft);g.drawText(juce::String(chaosValue*100,0)+"%",valueX,516,valueW,rowH,juce::Justification::centredRight);
 }
 
 void VeloriaAudioProcessorEditor::drawEvolutionGraph(juce::Graphics& g,juce::Rectangle<float> b)
@@ -270,5 +283,16 @@ void VeloriaAudioProcessorEditor::resized()
     ampWalk.setBounds(28,108,64,242);timeWalk.setBounds(104,108,64,242);ampMirror.setBounds(180,108,64,242);timeMirror.setBounds(256,108,64,242);
     ampDist.setBounds(24,374,70,104);timeDist.setBounds(100,374,70,104);ampStep.setBounds(176,374,70,104);timeStep.setBounds(252,374,70,104);chaos.setBounds(24,490,70,104);breakpoints.setBounds(100,490,70,104);pitchStability.setBounds(176,490,70,104);curve.setBounds(252,490,70,104);orderButton.setBounds(25,600,68,20);
     attack.setBounds(24,680,116,150);decay.setBounds(142,680,116,150);sustain.setBounds(260,680,116,150);release.setBounds(378,680,116,150);
-    seed.setBounds(548,700,86,92);fieldStatus.setBounds(646,716,148,35);presetNameEditor.setBounds(808,674,300,29);savePresetButton.setBounds(808,712,78,29);renamePresetButton.setBounds(894,712,82,29);deletePresetButton.setBounds(984,712,82,29);presetStatus.setBounds(808,754,300,47);voiceStatus.setBounds(1156,366,205,22);level.setBounds(1188,674,154,150);footerStatus.setBounds(415,872,570,14);
+
+    seed.setBounds(548,690,86,96);
+    fieldStatus.setBounds(648,704,142,28);
+    presetNameEditor.setBounds(808,686,300,30);
+    savePresetButton.setBounds(808,726,78,29);
+    renamePresetButton.setBounds(894,726,82,29);
+    deletePresetButton.setBounds(984,726,82,29);
+    presetStatus.setBounds(808,764,300,40);
+
+    voiceStatus.setBounds(1156,394,205,24);
+    level.setBounds(1188,674,154,150);
+    footerStatus.setBounds(415,872,570,14);
 }
