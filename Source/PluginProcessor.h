@@ -30,15 +30,248 @@ public:
     void releaseResources() override;
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
-    // CHAOS is implemented as a musical event layer in front of the existing
-    // synthesis engine. It is intentionally shared by VELORIA and BROWN IDSS:
-    // the chord defines the legal pitch classes, while the selected engine only
-    // determines how each resulting note is synthesised.
+    // v1.1 render path: the stochastic oscillator and musical CHAOS layer are
+    // unchanged, but MIDI is now consumed at its exact sample position and the
+    // voices are rendered into a deterministic stereo field instead of copying a
+    // mono mix to both channels.
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override
     {
+        juce::ScopedNoDenormals noDenormals;
         processChaosMidi(midi, buffer.getNumSamples());
-        processBlockLegacy(buffer, midi);
+        buffer.clear();
+
+        updateVoiceParameters();
+        outputGain.setRampDurationSeconds(0.020);
+        outputGain.setGainDecibels(parameters.getRawParameterValue("level")->load());
+
+        juce::MidiBuffer::Iterator iterator(midi);
+        juce::MidiMessage nextMessage;
+        int nextSample = 0;
+        bool hasEvent = iterator.getNextEvent(nextMessage, nextSample);
+
+        const auto voiceGain = 0.58f / std::sqrt(static_cast<float>(maxVoices));
+        double energyAccumulator = 0.0;
+
+        auto releaseDeferredNotes = [this]
+        {
+            for (int note = 0; note < 128; ++note)
+                if (! performanceHeldNotes[(std::size_t) note])
+                    stopNote(note);
+        };
+
+        auto handleEvent = [this, &releaseDeferredNotes](const juce::MidiMessage& message)
+        {
+            const bool generatedChaosEvent = message.getChannel() == chaosMidiChannel;
+
+            if (message.isController())
+            {
+                handleMidiController(message);
+
+                if (message.getControllerNumber() == 64 && ! generatedChaosEvent)
+                {
+                    const bool wasDown = sustainPedalDown;
+                    sustainPedalDown = message.getControllerValue() >= 64;
+                    if (wasDown && ! sustainPedalDown)
+                        releaseDeferredNotes();
+                }
+                else if (message.getControllerNumber() == 1 && ! generatedChaosEvent)
+                {
+                    modWheel = juce::jlimit(0.0f, 1.0f,
+                                           static_cast<float>(message.getControllerValue()) / 127.0f);
+                }
+            }
+            else if (message.isPitchWheel())
+            {
+                const auto normalised = (static_cast<float>(message.getPitchWheelValue()) - 8192.0f) / 8192.0f;
+                pitchBendSemitones = juce::jlimit(-2.0f, 2.0f, normalised * 2.0f);
+            }
+            else if (message.isAftertouch())
+            {
+                const auto pressure = juce::jlimit(0.0f, 1.0f,
+                    static_cast<float>(message.getAfterTouchValue()) / 127.0f);
+                for (auto& voice : voices)
+                    if (voice.active && ! voice.percussion && voice.midiNote == message.getNoteNumber())
+                        voice.pressure = pressure;
+            }
+            else if (message.isChannelPressure())
+            {
+                channelPressure = juce::jlimit(0.0f, 1.0f,
+                    static_cast<float>(message.getChannelPressureValue()) / 127.0f);
+                for (auto& voice : voices)
+                    if (voice.active && ! voice.percussion)
+                        voice.pressure = channelPressure;
+            }
+
+            if (message.isNoteOn(false))
+            {
+                const auto note = message.getNoteNumber();
+                if (! generatedChaosEvent && juce::isPositiveAndBelow(note, 128))
+                    performanceHeldNotes[(std::size_t) note] = true;
+                midiNoteOnCount.fetch_add(1, std::memory_order_relaxed);
+                startNote(note, message.getFloatVelocity());
+            }
+            else if (message.isNoteOff(true))
+            {
+                const auto note = message.getNoteNumber();
+                if (! generatedChaosEvent && juce::isPositiveAndBelow(note, 128))
+                    performanceHeldNotes[(std::size_t) note] = false;
+
+                midiNoteOffCount.fetch_add(1, std::memory_order_relaxed);
+
+                bool matched = false;
+                for (const auto& voice : voices)
+                    matched = matched || (voice.active && ! voice.percussion && voice.midiNote == note);
+                if (matched)
+                    midiNoteOffMatchCount.fetch_add(1, std::memory_order_relaxed);
+
+                if (generatedChaosEvent || ! sustainPedalDown)
+                    stopNote(note);
+            }
+            else if (message.isAllNotesOff() || message.isAllSoundOff())
+            {
+                performanceHeldNotes.fill(false);
+                sustainPedalDown = false;
+                stopAllVoices(false);
+            }
+
+            // Pressure and learned-controller changes affect the very next sample.
+            updateVoiceParameters();
+        };
+
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            while (hasEvent && nextSample <= sample)
+            {
+                handleEvent(nextMessage);
+                hasEvent = iterator.getNextEvent(nextMessage, nextSample);
+            }
+
+            float left = 0.0f;
+            float right = 0.0f;
+
+            for (std::size_t voiceIndex = 0; voiceIndex < voices.size(); ++voiceIndex)
+            {
+                auto& voice = voices[voiceIndex];
+                if (! voice.active)
+                    continue;
+
+                float voiceSample = 0.0f;
+
+                if (voice.percussion)
+                {
+                    const auto length = juce::jmax<std::uint64_t>(1, voice.percussionLengthSamples);
+                    const auto age = juce::jmin(voice.percussionSample, length);
+                    const auto progress = juce::jlimit(0.0f, 1.0f,
+                        static_cast<float>(age) / static_cast<float>(length));
+                    const auto remaining = juce::jmax(0.0f, 1.0f - progress);
+                    const auto contraction = std::pow(remaining, voice.contractionPower);
+                    const auto ampWalkNow = voice.endAmpWalk + (voice.startAmpWalk - voice.endAmpWalk) * contraction;
+                    const auto timeWalkNow = voice.endTimeWalk + (voice.startTimeWalk - voice.endTimeWalk) * contraction;
+                    voice.oscillator.setAmplitudeWalk(ampWalkNow);
+                    voice.oscillator.setTimeWalk(timeWalkNow);
+                    voice.oscillator.setAmplitudeMirror(voice.amplitudeMirror);
+                    voice.oscillator.setTimeMirror(voice.timeMirror);
+
+                    const auto pitchShape = std::pow(remaining, voice.pitchPower);
+                    const auto frequency = voice.endFrequency + (voice.startFrequency - voice.endFrequency) * pitchShape;
+                    voice.oscillator.setFrequency(frequency);
+
+                    float env = 0.0f;
+                    const auto attackSamples = juce::jmax<std::uint64_t>(1, voice.percussionAttackSamples);
+                    if (age < attackSamples)
+                        env = static_cast<float>(age) / static_cast<float>(attackSamples);
+                    else
+                    {
+                        const auto decayLength = juce::jmax<std::uint64_t>(1, length - attackSamples);
+                        const auto decayAge = juce::jmin(age - attackSamples, decayLength);
+                        const auto decayProgress = static_cast<float>(decayAge) / static_cast<float>(decayLength);
+                        env = std::pow(juce::jmax(0.0f, 1.0f - decayProgress), voice.decayPower);
+                    }
+
+                    voiceSample = voice.oscillator.processSample() * env * voice.gain * voiceGain;
+                    ++voice.percussionSample;
+                    if (voice.percussionSample >= length)
+                    {
+                        voice.active = false;
+                        voice.held = false;
+                        voice.percussion = false;
+                        voice.drumKind = DrumKind::none;
+                        voice.midiNote = -1;
+                        voice.pressure = 0.0f;
+                    }
+                }
+                else
+                {
+                    if (voice.midiNote >= 0)
+                    {
+                        const auto bendRatio = std::pow(2.0f, pitchBendSemitones / 12.0f);
+                        const auto baseFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(voice.midiNote));
+                        voice.oscillator.setFrequency(baseFrequency * bendRatio);
+                    }
+
+                    const auto env = voice.envelope.getNextSample();
+                    const auto expressionGain = 1.0f + modWheel * 0.10f + channelPressure * 0.06f;
+                    voiceSample = voice.oscillator.processSample() * env * voice.gain * voiceGain * expressionGain;
+
+                    if (! voice.envelope.isActive())
+                    {
+                        voice.active = false;
+                        voice.held = false;
+                        voice.midiNote = -1;
+                        voice.pressure = 0.0f;
+                    }
+                }
+
+                if (! std::isfinite(voiceSample))
+                    voiceSample = 0.0f;
+                voiceSample = juce::jlimit(-4.0f, 4.0f, voiceSample);
+
+                // Stable per-voice equal-power position. The MIDI note adds a small
+                // deterministic offset so repeated chords do not collapse into the
+                // same left/right pattern after voice stealing.
+                const auto noteOffset = voice.midiNote >= 0 ? (voice.midiNote % 12) / 11.0f : 0.5f;
+                const auto indexPosition = voices.size() > 1
+                    ? static_cast<float>(voiceIndex) / static_cast<float>(voices.size() - 1)
+                    : 0.5f;
+                auto pan = ((indexPosition * 0.72f + noteOffset * 0.28f) * 2.0f - 1.0f);
+                pan *= 0.72f + modWheel * 0.16f;
+                pan = juce::jlimit(-0.92f, 0.92f, pan);
+                const auto angle = (pan + 1.0f) * juce::MathConstants<float>::quarterPi;
+                left += voiceSample * std::cos(angle);
+                right += voiceSample * std::sin(angle);
+            }
+
+            if (! std::isfinite(left)) left = 0.0f;
+            if (! std::isfinite(right)) right = 0.0f;
+            left = juce::jlimit(-4.0f, 4.0f, left);
+            right = juce::jlimit(-4.0f, 4.0f, right);
+
+            energyAccumulator += 0.5 * (static_cast<double>(left) * static_cast<double>(left)
+                                      + static_cast<double>(right) * static_cast<double>(right));
+
+            if (buffer.getNumChannels() == 1)
+            {
+                buffer.setSample(0, sample, 0.70710678f * (left + right));
+            }
+            else
+            {
+                buffer.setSample(0, sample, left);
+                buffer.setSample(1, sample, right);
+                for (int channel = 2; channel < buffer.getNumChannels(); ++channel)
+                    buffer.setSample(channel, sample, 0.0f);
+            }
+        }
+
+        outputGain.process(juce::dsp::ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer)));
+
+        const auto rms = buffer.getNumSamples() > 0
+            ? static_cast<float>(std::sqrt(energyAccumulator / static_cast<double>(buffer.getNumSamples())))
+            : 0.0f;
+        publishVisualState(juce::jlimit(0.0f, 1.0f, rms * 5.0f));
     }
+
+    // Kept during the v1.1 transition so the old renderer remains available for
+    // regression comparison while the new path is validated.
     void processBlockLegacy(juce::AudioBuffer<float>&, juce::MidiBuffer&);
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -278,6 +511,7 @@ private:
     static constexpr int maxVoices = 8;
     static constexpr int midiLearnParameterCount = 22;
     static constexpr int drumPresetIndex = 9;
+    static constexpr int chaosMidiChannel = 16;
     static const std::array<FactoryPreset, 10> factoryPresets;
     static const std::array<const char*, midiLearnParameterCount> midiLearnParameterIds;
 
@@ -397,18 +631,19 @@ private:
         bool hasHeldNotes = false;
         bool panic = false;
 
-        // Inspect only the host/player MIDI before adding our own events. Generated
-        // notes therefore never become harmonic authorities themselves.
+        // Inspect only host/player MIDI before adding autonomous events. Generated
+        // notes use a private MIDI channel so sustain handling cannot accidentally
+        // hold the stochastic takeover voices forever.
         for (const auto metadata : midi)
         {
             const auto message = metadata.getMessage();
-            if (message.isNoteOn(false))
+            if (message.isNoteOn(false) && message.getChannel() != chaosMidiChannel)
             {
                 const auto note = message.getNoteNumber();
                 if (juce::isPositiveAndBelow(note, 128))
                     chaosHeldNotes[(std::size_t) note] = true;
             }
-            else if (message.isNoteOff(true))
+            else if (message.isNoteOff(true) && message.getChannel() != chaosMidiChannel)
             {
                 const auto note = message.getNoteNumber();
                 if (juce::isPositiveAndBelow(note, 128))
@@ -430,9 +665,6 @@ private:
                 pending[(std::size_t) pendingCount++] = { note, juce::jlimit(0, blockSamples - 1, sample), 0.0f, false };
         };
 
-        // Advance autonomous note lifetimes. Their note-offs are independent and
-        // intentionally abrupt at high CHAOS so voices can audibly fight/replace
-        // one another rather than accumulating into an undifferentiated cluster.
         for (auto& generated : chaosGeneratedNotes)
         {
             if (! generated.active)
@@ -462,7 +694,7 @@ private:
             for (int i = 0; i < pendingCount; ++i)
             {
                 const auto& e = pending[(std::size_t) i];
-                midi.addEvent(juce::MidiMessage::noteOff(1, e.midiNote), e.samplePosition);
+                midi.addEvent(juce::MidiMessage::noteOff(chaosMidiChannel, e.midiNote), e.samplePosition);
             }
             return;
         }
@@ -476,7 +708,7 @@ private:
             for (int i = 0; i < pendingCount; ++i)
             {
                 const auto& e = pending[(std::size_t) i];
-                midi.addEvent(juce::MidiMessage::noteOff(1, e.midiNote), e.samplePosition);
+                midi.addEvent(juce::MidiMessage::noteOff(chaosMidiChannel, e.midiNote), e.samplePosition);
             }
             return;
         }
@@ -508,8 +740,6 @@ private:
             for (auto& generated : chaosGeneratedNotes)
                 if (! generated.active) { slot = &generated; break; }
 
-            // No free stochastic slot: a new note must defeat an old one. This is
-            // the audible takeover mechanism at the top of the CHAOS range.
             if (slot == nullptr)
             {
                 slot = &chaosGeneratedNotes.front();
@@ -534,9 +764,9 @@ private:
         {
             const auto& e = pending[(std::size_t) i];
             if (e.noteOn)
-                midi.addEvent(juce::MidiMessage::noteOn(1, e.midiNote, e.velocity), e.samplePosition);
+                midi.addEvent(juce::MidiMessage::noteOn(chaosMidiChannel, e.midiNote, e.velocity), e.samplePosition);
             else
-                midi.addEvent(juce::MidiMessage::noteOff(1, e.midiNote), e.samplePosition);
+                midi.addEvent(juce::MidiMessage::noteOff(chaosMidiChannel, e.midiNote), e.samplePosition);
         }
     }
 
@@ -561,8 +791,15 @@ private:
     std::array<std::atomic<int>, midiLearnParameterCount> midiCCMappings {};
     std::atomic<int> midiLearnTarget { -1 };
 
+    // v1.1 performance state.
+    std::array<bool, 128> performanceHeldNotes {};
+    bool sustainPedalDown { false };
+    float pitchBendSemitones { 0.0f };
+    float modWheel { 0.0f };
+    float channelPressure { 0.0f };
+
     // Shared musical CHAOS state. None of this depends on the oscillator operating
-    // model, which is what keeps CHAOS behaviour identical in both engines.
+    // model, which keeps CHAOS behaviour identical in both stochastic engines.
     std::array<bool, 128> chaosHeldNotes {};
     std::array<ChaosGeneratedNote, 8> chaosGeneratedNotes {};
     juce::Random chaosNoteRandom { 0x4348414f };
@@ -573,11 +810,9 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VeloriaAudioProcessor)
 };
 
-// PluginProcessor.cpp currently owns the legacy audio renderer. When this header
-// is included directly by that translation unit, rename that existing definition
-// to processBlockLegacy so the wrapper above can insert the shared note-event layer.
-// Nested includes (for example PluginEditor.cpp -> PluginEditor.h -> this header)
-// are deliberately left untouched.
+// PluginProcessor.cpp still contains the original renderer during the v1.1
+// transition. Rename that definition to processBlockLegacy when compiling the
+// processor translation unit so the public v1.1 renderer above owns processBlock.
 #if defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 1
  #define processBlock processBlockLegacy
 #endif
