@@ -1,30 +1,25 @@
-name: Build macOS VST3
+name: Build Veloria v1.1 macOS
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - agent/vst3-test-build
+      - agent/veloria-v1.1
   pull_request:
     branches:
-      - main
+      - agent/vst3-test-build
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: macos-14
 
     steps:
-      - name: Checkout
+      - name: Checkout v1.1 source
         uses: actions/checkout@v4
-        with:
-          ref: agent/vst3-test-build
 
-      # The GitHub connector stores the supplied high-resolution JPEG losslessly
-      # as base64 text. Recreate the actual JPEG before CMake/JUCE embeds it so
-      # BinaryData contains the 1055x1491 artwork, not the old thumbnail asset.
       - name: Restore high-resolution WHAT IF artwork
         run: |
           /usr/bin/openssl base64 -d -A \
@@ -37,49 +32,46 @@ jobs:
           test "$WIDTH" = "1055"
           test "$HEIGHT" = "1491"
 
-      - name: Integrate extended stochastic controls into source
+      - name: Apply JUCE compatibility fixes
         run: |
-          if grep -q "setBoundaryDrive" Source/dsp/StochasticOscillator.h; then
-            echo "Extended stochastic controls already integrated in source"
-          else
-            python3 tools/apply_extended_stochastic_controls.py
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Source/PluginProcessor.cpp Source/PluginProcessor.h Source/PluginEditor.cpp Source/PluginEditor.h Source/dsp/StochasticOscillator.h
-            git commit -m "Integrate Boundary Rate Jump Correlation controls"
-            git push origin HEAD:agent/vst3-test-build
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Source/PluginProcessor.h')
+          s = p.read_text()
+          s = s.replace(
+              'const auto angle = (pan + 1.0f) * juce::MathConstants<float>::quarterPi;',
+              'const auto angle = (pan + 1.0f) * (juce::MathConstants<float>::pi * 0.25f);')
+          s = s.replace(
+              'outputGain.process(juce::dsp::ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer)));',
+              'juce::dsp::AudioBlock<float> outputBlock(buffer);\n        juce::dsp::ProcessContextReplacing<float> outputContext(outputBlock);\n        outputGain.process(outputContext);')
+          p.write_text(s)
+          assert 'quarterPi' not in s
+          assert 'ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer))' not in s
+          PY
 
-      - name: Apply reference-inspired compact UI layout
-        run: |
-          if grep -q 'drawPanel(g,{14,74,430,786}' Source/PluginEditor.cpp; then
-            echo "Compact UI layout already integrated in source"
-          else
-            python3 tools/apply_reference_layout.py
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Source/PluginEditor.cpp
-            git commit -m "Rework Veloria layout and compact ADSR"
-            git push origin HEAD:agent/vst3-test-build
-          fi
-
-      - name: Configure
+      - name: Configure release build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VST3
         run: cmake --build build --config Release --target Veloria_VST3 --parallel 3
 
-      - name: Package VST3
+      - name: Verify bundle
         run: |
           test -d "build/Veloria_artefacts/Release/VST3/Veloria.vst3"
+          test -f "build/Veloria_artefacts/Release/VST3/Veloria.vst3/Contents/MacOS/Veloria"
+          file "build/Veloria_artefacts/Release/VST3/Veloria.vst3/Contents/MacOS/Veloria"
+
+      - name: Package VST3
+        run: |
           mkdir -p artifact
           ditto -c -k --sequesterRsrc --keepParent \
             "build/Veloria_artefacts/Release/VST3/Veloria.vst3" \
-            "artifact/Veloria-macOS-VST3.zip"
+            "artifact/Veloria-v1.1-macOS-VST3.zip"
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
-          name: Veloria-macOS-VST3
-          path: artifact/Veloria-macOS-VST3.zip
+          name: Veloria-v1.1-macOS-VST3
+          path: artifact/Veloria-v1.1-macOS-VST3.zip
           if-no-files-found: error
+          retention-days: 14
