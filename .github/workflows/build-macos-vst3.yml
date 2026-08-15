@@ -32,6 +32,23 @@ jobs:
           test "$WIDTH" = "1055"
           test "$HEIGHT" = "1491"
 
+      - name: Apply JUCE compatibility fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Source/PluginProcessor.h')
+          s = p.read_text()
+          s = s.replace(
+              'const auto angle = (pan + 1.0f) * juce::MathConstants<float>::quarterPi;',
+              'const auto angle = (pan + 1.0f) * (juce::MathConstants<float>::pi * 0.25f);')
+          s = s.replace(
+              'outputGain.process(juce::dsp::ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer)));',
+              'juce::dsp::AudioBlock<float> outputBlock(buffer);\n        juce::dsp::ProcessContextReplacing<float> outputContext(outputBlock);\n        outputGain.process(outputContext);')
+          p.write_text(s)
+          assert 'quarterPi' not in s
+          assert 'ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer))' not in s
+          PY
+
       - name: Configure release build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
