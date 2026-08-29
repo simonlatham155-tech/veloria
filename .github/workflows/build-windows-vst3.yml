@@ -1,0 +1,98 @@
+name: Build Veloria v1.1 Windows VST3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - windows-vst3-v1.1
+  pull_request:
+    branches:
+      - main
+      - agent/veloria-v1.1
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-vst3:
+    name: Windows 64-bit VST3 Release
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout v1.1 source
+        uses: actions/checkout@v4
+
+      - name: Verify embedded artwork
+        shell: pwsh
+        run: |
+          $artwork = "assets/what_if_history.jpg"
+          if (-not (Test-Path $artwork -PathType Leaf)) {
+            throw "Embedded artwork is missing: $artwork"
+          }
+          if ((Get-Item $artwork).Length -le 0) {
+            throw "Embedded artwork is empty: $artwork"
+          }
+
+      - name: Apply MSVC compatibility fixes
+        shell: pwsh
+        run: |
+          $header = "Source/PluginProcessor.h"
+          $h = Get-Content -Raw $header
+          $oldAngle = "const auto angle = (pan + 1.0f) * juce::MathConstants<float>::quarterPi;"
+          $newAngle = "const auto angle = (pan + 1.0f) * (juce::MathConstants<float>::pi * 0.25f);"
+          if (-not $h.Contains($oldAngle)) { throw "Expected JUCE angle expression not found" }
+          $h = $h.Replace($oldAngle, $newAngle)
+          $oldGain = "outputGain.process(juce::dsp::ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer)));"
+          $newGain = "juce::dsp::AudioBlock<float> outputBlock(buffer);" + [Environment]::NewLine + "        juce::dsp::ProcessContextReplacing<float> outputContext(outputBlock);" + [Environment]::NewLine + "        outputGain.process(outputContext);"
+          if (-not $h.Contains($oldGain)) { throw "Expected JUCE gain expression not found" }
+          $h = $h.Replace($oldGain, $newGain)
+          Set-Content -Path $header -Value $h -NoNewline
+
+          $source = "Source/PluginProcessor.cpp"
+          $s = Get-Content -Raw $source
+          $oldDefinition = "void VeloriaAudioProcessor::processBlock("
+          $newDefinition = "void VeloriaAudioProcessor::processBlockLegacy("
+          $count = ([regex]::Matches($s, [regex]::Escape($oldDefinition))).Count
+          if ($count -ne 1) { throw "Expected exactly one legacy processBlock definition, found $count" }
+          $s = $s.Replace($oldDefinition, $newDefinition)
+          Set-Content -Path $source -Value $s -NoNewline
+
+      - name: Configure x64 Release
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build VST3
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target Veloria_VST3 --parallel 2
+
+      - name: Verify VST3 bundle
+        shell: pwsh
+        run: |
+          $plugin = "build/Veloria_artefacts/Release/VST3/Veloria.vst3"
+          $binary = "$plugin/Contents/x86_64-win/Veloria.vst3"
+          if (-not (Test-Path $plugin -PathType Container)) {
+            throw "VST3 bundle was not produced: $plugin"
+          }
+          if (-not (Test-Path $binary -PathType Leaf)) {
+            Get-ChildItem -Recurse $plugin
+            throw "VST3 binary was not produced: $binary"
+          }
+          $size = (Get-Item $binary).Length
+          if ($size -lt 10000) { throw "VST3 binary is unexpectedly small: $size bytes" }
+          Write-Host "Verified Windows VST3: $binary ($size bytes)"
+
+      - name: Package VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Compress-Archive -Path "build/Veloria_artefacts/Release/VST3/Veloria.vst3" -DestinationPath "artifact/Veloria-v1.1-Windows-x64-VST3.zip" -CompressionLevel Optimal
+
+      - name: Upload Windows VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Veloria-v1.1-Windows-x64-VST3
+          path: artifact/Veloria-v1.1-Windows-x64-VST3.zip
+          if-no-files-found: error
+          retention-days: 14
