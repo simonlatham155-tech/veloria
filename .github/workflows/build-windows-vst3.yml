@@ -22,18 +22,15 @@ jobs:
       - name: Checkout v1.1 source
         uses: actions/checkout@v4
 
-      - name: Restore embedded WHAT IF artwork
+      - name: Verify embedded artwork
         shell: pwsh
         run: |
-          $parts = Get-ChildItem -Path "assets/what_if_history.b64.part*" | Sort-Object Name
-          if ($parts.Count -eq 0) { throw "No artwork base64 parts found" }
-          $encoded = (($parts | ForEach-Object { (Get-Content -Raw $_.FullName).Trim() }) -join '') -replace '\s', ''
-          [IO.File]::WriteAllBytes(
-            "assets/what_if_history.jpg",
-            [Convert]::FromBase64String($encoded)
-          )
-          if ((Get-Item "assets/what_if_history.jpg").Length -le 0) {
-            throw "Artwork restore produced an empty file"
+          $artwork = "assets/what_if_history.jpg"
+          if (-not (Test-Path $artwork -PathType Leaf)) {
+            throw "Embedded artwork is missing: $artwork"
+          }
+          if ((Get-Item $artwork).Length -le 0) {
+            throw "Embedded artwork is empty: $artwork"
           }
 
       - name: Configure x64 Release
