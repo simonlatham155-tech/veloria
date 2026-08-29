@@ -33,6 +33,30 @@ jobs:
             throw "Embedded artwork is empty: $artwork"
           }
 
+      - name: Apply MSVC compatibility fixes
+        shell: pwsh
+        run: |
+          $header = "Source/PluginProcessor.h"
+          $h = Get-Content -Raw $header
+          $oldAngle = "const auto angle = (pan + 1.0f) * juce::MathConstants<float>::quarterPi;"
+          $newAngle = "const auto angle = (pan + 1.0f) * (juce::MathConstants<float>::pi * 0.25f);"
+          if (-not $h.Contains($oldAngle)) { throw "Expected JUCE angle expression not found" }
+          $h = $h.Replace($oldAngle, $newAngle)
+          $oldGain = "outputGain.process(juce::dsp::ProcessContextReplacing<float>(juce::dsp::AudioBlock<float>(buffer)));"
+          $newGain = "juce::dsp::AudioBlock<float> outputBlock(buffer);" + [Environment]::NewLine + "        juce::dsp::ProcessContextReplacing<float> outputContext(outputBlock);" + [Environment]::NewLine + "        outputGain.process(outputContext);"
+          if (-not $h.Contains($oldGain)) { throw "Expected JUCE gain expression not found" }
+          $h = $h.Replace($oldGain, $newGain)
+          Set-Content -Path $header -Value $h -NoNewline
+
+          $source = "Source/PluginProcessor.cpp"
+          $s = Get-Content -Raw $source
+          $oldDefinition = "void VeloriaAudioProcessor::processBlock("
+          $newDefinition = "void VeloriaAudioProcessor::processBlockLegacy("
+          $count = ([regex]::Matches($s, [regex]::Escape($oldDefinition))).Count
+          if ($count -ne 1) { throw "Expected exactly one legacy processBlock definition, found $count" }
+          $s = $s.Replace($oldDefinition, $newDefinition)
+          Set-Content -Path $source -Value $s -NoNewline
+
       - name: Configure x64 Release
         shell: pwsh
         run: |
